@@ -7,6 +7,7 @@ import { DashboardPage } from "./features/dashboard/DashboardPage";
 import { ExecutionDetailPage } from "./features/executions/ExecutionDetailPage";
 import { ExecutionsPage } from "./features/executions/ExecutionsPage";
 import { PoliciesPage } from "./features/policies/PoliciesPage";
+import { ReplayPage } from "./features/replay/ReplayPage";
 import { ToolsPage } from "./features/tools/ToolsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { makeQueryClient } from "./services/queryClient";
@@ -19,6 +20,7 @@ export function AppRoutes() {
         <Route path="executions" element={<ExecutionsPage />} />
         <Route path="executions/:executionId" element={<ExecutionDetailPage />} />
         <Route path="approvals" element={<ApprovalsPage />} />
+        <Route path="replay" element={<ReplayPage />} />
         <Route path="policies" element={<PoliciesPage />} />
         <Route path="tools" element={<ToolsPage />} />
         <Route path="*" element={<NotFoundPage />} />
