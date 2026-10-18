@@ -40,7 +40,10 @@ export function mockApi(routes: Record<string, Handler>) {
   return { calls, fetchMock };
 }
 
-export function renderRoute(element: ReactElement, { path = "/", route = "/" }: { path?: string; route?: string } = {}) {
+export function renderRoute(
+  element: ReactElement,
+  { path = "/", route = "/", extra = [] }: { path?: string; route?: string; extra?: { path: string; element: ReactElement }[] } = {},
+) {
   const client = makeQueryClient();
   client.setDefaultOptions({ queries: { retry: false, staleTime: 0 } });
   return render(
@@ -48,6 +51,7 @@ export function renderRoute(element: ReactElement, { path = "/", route = "/" }: 
       <MemoryRouter initialEntries={[route]}>
         <Routes>
           <Route path={path} element={element} />
+          {extra.map((r) => <Route key={r.path} path={r.path} element={r.element} />)}
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
