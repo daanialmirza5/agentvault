@@ -1,0 +1,16 @@
+# Development and test tooling (pinned). Install with: pip install -r requirements-dev.txt
+-r requirements.txt
+pytest==9.1.1
+pytest-cov==7.1.0
+coverage==7.16.2
+iniconfig==2.3.1
+pluggy==1.7.0
+packaging==26.3
+pygments==2.21.0
+ruff==0.17.1
+mypy==2.4.0
+mypy-extensions==1.1.0
+pathspec==1.1.1
+librt==0.16.0
+ast-serialize==0.13.1
+types-jsonschema==4.26.0.20261006
