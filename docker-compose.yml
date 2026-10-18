@@ -1,0 +1,29 @@
+# Local container setup: `docker compose up --build`, then open http://localhost:8090
+# Only the web container publishes a port; the API is reached through nginx at /api.
+name: agentvault
+
+services:
+  backend:
+    build: .
+    environment:
+      AGENTVAULT_DATABASE_URL: sqlite:////data/agentvault.db
+      AGENTVAULT_ENVIRONMENT: ${AGENTVAULT_ENVIRONMENT:-production}
+      AGENTVAULT_API_TOKEN: ${AGENTVAULT_API_TOKEN:-}
+      AGENTVAULT_OPERATOR_NAME: ${AGENTVAULT_OPERATOR_NAME:-local-operator}
+      AGENTVAULT_CORS_ORIGINS: ${AGENTVAULT_CORS_ORIGINS:-http://localhost:8090}
+      AGENTVAULT_RETENTION_DAYS: ${AGENTVAULT_RETENTION_DAYS:-30}
+    volumes:
+      - agentvault-data:/data
+    restart: unless-stopped
+
+  web:
+    build: ./frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${AGENTVAULT_WEB_PORT:-8090}:80"
+    restart: unless-stopped
+
+volumes:
+  agentvault-data:
