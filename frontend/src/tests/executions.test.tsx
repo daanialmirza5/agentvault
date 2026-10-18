@@ -93,6 +93,23 @@ describe("Execution workspace", () => {
     expect(post?.body).toEqual({ execution_id: "exe_1", action_hash: "b".repeat(64), note: "looks fine" });
   });
 
+  it("keeps the decision result visible after the execution refreshes to completed", async () => {
+    let approved = false;
+    detailRoutes({
+      "GET /executions/:id": () => execution(approved ? { status: "completed", pending_approval_id: null } : {}),
+      "GET /approvals": () => page(approved ? [] : [approval()]),
+      "POST /approvals/:id/approve": () => {
+        approved = true;
+        return { approval: approval({ status: "approved" }), execution: execution({ status: "completed" }), idempotent_repeat: false };
+      },
+    });
+    renderRoute(<ExecutionDetailPage />, { path: "/executions/:executionId", route: "/executions/exe_1" });
+    const card = await screen.findByRole("article", { name: /Approval request/ });
+    await userEvent.click(within(card).getByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(screen.getAllByText("completed").length).toBeGreaterThan(0));
+    expect(screen.getByText(/Approval approved/)).toBeInTheDocument();
+  });
+
   it("rejects the pending action", async () => {
     const { calls } = detailRoutes({
       "POST /approvals/:id/reject": () => ({ approval: approval({ status: "rejected" }), execution: execution({ status: "blocked" }), idempotent_repeat: false }),

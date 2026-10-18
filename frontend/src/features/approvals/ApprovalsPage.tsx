@@ -6,6 +6,7 @@ import { Card, EmptyState, ErrorState, LoadingState, Mono, PageHeader, Paginatio
 import { useApprovals } from "../../hooks/queries";
 import { formatTime } from "../../services/format";
 import { ApprovalCard } from "./ApprovalCard";
+import { useStickyApprovals } from "./useStickyApprovals";
 
 type Tab = "pending" | "history";
 const LIMIT = 20;
@@ -55,6 +56,8 @@ function History() {
 export function ApprovalsPage() {
   const [tab, setTab] = useState<Tab>("pending");
   const pending = useApprovals({ status: "pending", limit: 50 });
+  const pendingItems = pending.data?.items ?? [];
+  const [cards, onDecided] = useStickyApprovals(pendingItems);
   return (
     <div className="space-y-4">
       <PageHeader
@@ -67,12 +70,12 @@ export function ApprovalsPage() {
         <div className="space-y-4">
           {pending.isLoading && <LoadingState />}
           {pending.error && <ErrorState error={pending.error} onRetry={() => void pending.refetch()} />}
-          {pending.data && pending.data.items.length === 0 && (
+          {pending.data && cards.length === 0 && (
             <Card><EmptyState title="No actions are waiting for approval"
               description="Launch the 'Follow up with an enterprise customer' scenario to create one."
               action={<Link className="text-sm font-medium text-accent-600 hover:underline" to="/executions">Go to executions</Link>} /></Card>
           )}
-          {pending.data?.items.map((a) => <ApprovalCard key={a.id} approval={a} />)}
+          {cards.map((a) => <ApprovalCard key={a.id} approval={a} onDecided={onDecided} />)}
         </div>
       )}
       {tab === "history" && <History />}

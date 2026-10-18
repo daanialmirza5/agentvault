@@ -22,12 +22,17 @@ function useCountdown(expiresAt: string): string {
   return `${m}m ${s.toString().padStart(2, "0")}s left`;
 }
 
-export function ApprovalCard({ approval, showExecutionLink = true }: { approval: Approval; showExecutionLink?: boolean }) {
+export function ApprovalCard({ approval, showExecutionLink = true, onDecided }: {
+  approval: Approval;
+  showExecutionLink?: boolean;
+  onDecided?: (approval: Approval) => void;
+}) {
   const qc = useQueryClient();
   const [note, setNote] = useState("");
   const countdown = useCountdown(approval.expires_at);
   const decide = useMutation({
     mutationFn: (verdict: "approve" | "reject") => api.decideApproval(approval, verdict, note),
+    onSuccess: (result) => onDecided?.(result.approval),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ["approvals"] });
       void qc.invalidateQueries({ queryKey: ["execution", approval.execution_id] });

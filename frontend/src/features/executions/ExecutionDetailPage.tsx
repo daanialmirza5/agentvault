@@ -11,6 +11,7 @@ import { useExecution, useExecutionDecisions, useExecutionEvents } from "../../h
 import { api, describeError } from "../../services/api";
 import { formatTime } from "../../services/format";
 import { ApprovalCard } from "../approvals/ApprovalCard";
+import { useStickyApprovals } from "../approvals/useStickyApprovals";
 import { decisionFor } from "./eventStyle";
 import { FlowGraph } from "./FlowGraph";
 import { EventDetail, Timeline } from "./Timeline";
@@ -29,6 +30,9 @@ export function ExecutionDetailPage() {
     queryFn: () => api.approvals({ execution_id: executionId, status: "pending" }),
     enabled: execution.data?.status === "waiting_for_approval",
   });
+  const [approvalCards, onDecided] = useStickyApprovals(
+    execution.data?.status === "waiting_for_approval" ? (pendingApproval.data?.items ?? []) : [],
+  );
   const [tab, setTab] = useState<Tab>("timeline");
   const [selected, setSelected] = useState<string | null>(null);
   const [verifyRequested, setVerifyRequested] = useState(false);
@@ -89,8 +93,8 @@ export function ExecutionDetailPage() {
         {ex.final_output && <div className="sm:col-span-3 lg:col-span-6 text-xs text-slate-600"><span className="font-medium">Agent output:</span> {ex.final_output}</div>}
       </div>
 
-      {ex.status === "waiting_for_approval" && (pendingApproval.data?.items ?? []).map((a) => (
-        <ApprovalCard key={a.id} approval={a} showExecutionLink={false} />
+      {approvalCards.map((a) => (
+        <ApprovalCard key={a.id} approval={a} showExecutionLink={false} onDecided={onDecided} />
       ))}
 
       <Tabs<Tab>
