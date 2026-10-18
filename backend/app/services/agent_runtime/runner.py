@@ -165,7 +165,8 @@ class Runner:
         return state
 
     def resume(self, state: RunState, resolution: Resolution) -> RunState:
-        if state.status != "waiting_for_approval" or state.pending_action is None:
+        # The caller has already claimed the execution (waiting_for_approval -> running) atomically.
+        if state.status not in {"waiting_for_approval", "running"} or state.pending_action is None:
             raise RuntimeError("execution is not waiting for approval")
         state.status = "running"
         self._emit(EventType.EXECUTION_RESUMED, resolution.outcome,
@@ -329,6 +330,9 @@ class Runner:
 
     def _execute(self, state: RunState, pending: dict[str, Any], tool: ToolSpec) -> None:
         step, label = pending["step"], pending["label"]
+        # Persist everything decided so far before running the tool, so a slow tool never holds
+        # a database write lock and a crash mid-tool leaves a consistent "running" record.
+        self.sink.checkpoint(state)
         result, source = self.invoker.invoke(tool, pending, state.sandbox, self.seed)
         if result is None:
             self._emit(EventType.TOOL_FAILED, "unavailable", {

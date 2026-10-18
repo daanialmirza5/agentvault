@@ -1,17 +1,21 @@
 """Database engine, sessions and the SQLAlchemy declarative base.
 
-SQLite is the default. Two details matter for correctness:
+SQLite is the default. Three details matter for correctness:
 
 * ``foreign_keys`` is enabled per connection (SQLite defaults it to off).
-* Transactions are started explicitly so that callers can request ``BEGIN IMMEDIATE``
-  (see :func:`write_transaction`). Approval decisions use it so that two concurrent
-  decisions for the same approval serialize instead of racing.
+* Write-capable sessions start transactions with ``BEGIN IMMEDIATE``. In WAL mode a
+  *deferred* transaction that reads and then tries to write fails instantly with
+  ``SQLITE_BUSY`` if another writer committed in between; taking the write lock up front
+  makes concurrent writers queue (``busy_timeout``) instead. It is also what serializes
+  concurrent approval decisions.
+* Read-only API endpoints use :func:`get_read_session`, which begins ``DEFERRED`` and
+  therefore never waits for writers.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -78,20 +82,25 @@ def _configure_sqlite(engine: Engine) -> None:
 
     @event.listens_for(engine, "begin")
     def _on_begin(conn: Any) -> None:
-        mode = conn.get_execution_options().get("sqlite_begin", "DEFERRED")
+        mode = conn.get_execution_options().get("sqlite_begin", "IMMEDIATE")
+        if mode not in {"DEFERRED", "IMMEDIATE"}:
+            raise ValueError("invalid sqlite_begin mode")
         conn.exec_driver_sql(f"BEGIN {mode}")
 
 
 _engine: Engine | None = None
 _session_factory: sessionmaker[Session] | None = None
+_read_session_factory: sessionmaker[Session] | None = None
 
 
 def init_engine(url: str | None = None) -> Engine:
-    global _engine, _session_factory
+    global _engine, _session_factory, _read_session_factory
     if _engine is not None:
         _engine.dispose()
     _engine = make_engine(url or get_settings().database_url)
     _session_factory = sessionmaker(bind=_engine, expire_on_commit=False, autoflush=False)
+    _read_session_factory = sessionmaker(bind=_engine.execution_options(sqlite_begin="DEFERRED"),
+                                         expire_on_commit=False, autoflush=False)
     return _engine
 
 
@@ -109,8 +118,15 @@ def session_factory() -> sessionmaker[Session]:
     return _session_factory
 
 
+def read_session_factory() -> sessionmaker[Session]:
+    if _read_session_factory is None:
+        init_engine()
+    assert _read_session_factory is not None
+    return _read_session_factory
+
+
 def get_session() -> Iterator[Session]:
-    """FastAPI dependency: one session per request, rolled back on error."""
+    """FastAPI dependency: one write-capable session per request, rolled back on error."""
     session = session_factory()()
     try:
         yield session
@@ -122,13 +138,22 @@ def get_session() -> Iterator[Session]:
         session.close()
 
 
+def get_read_session() -> Iterator[Session]:
+    """FastAPI dependency for read-only endpoints (never takes the write lock)."""
+    session = read_session_factory()()
+    try:
+        yield session
+    finally:
+        session.rollback()
+        session.close()
+
+
 @contextmanager
-def write_transaction(session: Session) -> Iterator[Session]:
-    """Ensure the session's next transaction takes the SQLite write lock up front."""
+def write_transaction(session: Session) -> Generator[Session, None, None]:
+    """Run a block in a fresh transaction that holds the SQLite write lock from its first statement."""
     if session.in_transaction():
         session.commit()
-    if get_engine().dialect.name == "sqlite":
-        session.connection(execution_options={"sqlite_begin": "IMMEDIATE"})
+    session.connection()  # begins the transaction now (IMMEDIATE for write-capable sessions)
     try:
         yield session
         session.commit()

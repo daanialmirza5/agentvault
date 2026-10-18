@@ -6,9 +6,11 @@ from datetime import timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.core.db import write_transaction
 from app.core.errors import ConflictError, ValidationFailedError
 from app.core.utils import fingerprint, new_id, utcnow
 from app.models import Approval, Execution, PolicyDecisionRecord
@@ -200,18 +202,20 @@ def resume_execution(session: Session, settings: Settings, execution: Execution,
 
 
 def cancel_execution(session: Session, settings: Settings, execution: Execution, reason: str) -> Execution:
-    if execution.status in TERMINAL_STATUSES:
-        raise ConflictError(f"execution is already {execution.status}", code="execution_finished")
-    if execution.status == "running":
-        raise ConflictError("execution is running; it can be cancelled once it pauses", code="execution_running")
-    approval_id = execution.pending_approval_id
-    runner = build_runner(session, settings, execution)
-    runner.cancel(read_state(execution), reason)
-    if approval_id:
-        approval = session.get(Approval, approval_id)
-        if approval is not None and approval.status == "pending":
-            approval.status = "cancelled"
-            approval.decided_at = utcnow()
-            approval.decision_note = "execution cancelled"
-            session.commit()
+    """Cancel a pending or waiting execution. Takes the write lock so it cannot race an approval."""
+    with write_transaction(session):
+        session.refresh(execution)
+        if execution.status in TERMINAL_STATUSES:
+            raise ConflictError(f"execution is already {execution.status}", code="execution_finished")
+        if execution.status == "running":
+            raise ConflictError("execution is running; it can be cancelled once it pauses", code="execution_running")
+        if execution.pending_approval_id:
+            changed = session.execute(
+                update(Approval)
+                .where(Approval.id == execution.pending_approval_id, Approval.status == "pending")
+                .values(status="cancelled", decided_at=utcnow(), decision_note="execution cancelled")
+            ).rowcount  # type: ignore[attr-defined]
+            if changed != 1:
+                raise ConflictError("the pending approval was decided concurrently", code="approval_already_decided")
+        build_runner(session, settings, execution).cancel(read_state(execution), reason)
     return execution

@@ -11,7 +11,11 @@ addopts = "-q --strict-markers"
 markers = [
     "e2e: full API workflow tests (still in-process, no network)",
 ]
-filterwarnings = ["error::DeprecationWarning:app.*"]
+filterwarnings = [
+    "error::DeprecationWarning:app.*",
+    # Starlette 1.8 recommends the `httpx2` package for its TestClient; plain httpx still works.
+    "ignore:Using `httpx` with `starlette.testclient`",
+]
 
 [tool.ruff]
 line-length = 110
