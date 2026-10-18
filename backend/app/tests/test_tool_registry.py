@@ -105,6 +105,15 @@ def test_duplicate_version_and_builtin_shadowing_rejected(session: Session, regi
         {"input_schema": {"type": "object"}},  # must forbid extra properties
         {"input_schema": {"type": "object", "additionalProperties": False, "properties": {"a": {"type": "nope"}}}},
         {"tool_id": "Bad Id"},
+        # Regex keywords are refused to rule out ReDoS through custom schemas.
+        {
+            "input_schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {"a": {"type": "string", "pattern": "^(a+)+$"}},
+            }
+        },
+        {"output_schema": {"type": "object", "patternProperties": {"^x": {"type": "string"}}}},
     ],
 )
 def test_invalid_custom_tools_rejected(overrides: dict[str, object]) -> None:

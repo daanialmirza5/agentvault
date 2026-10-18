@@ -101,9 +101,29 @@ class ToolCreate(BaseModel):
         return value
 
 
+FORBIDDEN_SCHEMA_KEYWORDS = frozenset({"pattern", "patternProperties"})
+
+
+def _forbidden_keywords(node: Any) -> set[str]:
+    """Regex keywords are rejected in custom schemas: Python's `re` has no timeout, so a
+    catastrophic-backtracking pattern could stall argument validation (ReDoS)."""
+    found: set[str] = set()
+    if isinstance(node, dict):
+        found |= FORBIDDEN_SCHEMA_KEYWORDS & set(node)
+        for value in node.values():
+            found |= _forbidden_keywords(value)
+    elif isinstance(node, list):
+        for value in node:
+            found |= _forbidden_keywords(value)
+    return found
+
+
 def _check_schema(schema: dict[str, Any]) -> None:
     if len(canonical_json(schema)) > MAX_SCHEMA_BYTES:
         raise ValueError("schema is too large")
+    forbidden = _forbidden_keywords(schema)
+    if forbidden:
+        raise ValueError(f"custom tool schemas may not use {sorted(forbidden)} (use enum, maxLength or format instead)")
     try:
         Draft202012Validator.check_schema(schema)
     except SchemaError as exc:
