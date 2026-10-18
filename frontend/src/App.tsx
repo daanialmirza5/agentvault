@@ -3,7 +3,10 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 
 import { Layout } from "./components/Layout";
 import { ApprovalsPage } from "./features/approvals/ApprovalsPage";
+import { AuditPage } from "./features/audit/AuditPage";
 import { DashboardPage } from "./features/dashboard/DashboardPage";
+import { EvaluationDetailPage } from "./features/evaluations/EvaluationDetailPage";
+import { EvaluationsPage } from "./features/evaluations/EvaluationsPage";
 import { ExecutionDetailPage } from "./features/executions/ExecutionDetailPage";
 import { ExecutionsPage } from "./features/executions/ExecutionsPage";
 import { PoliciesPage } from "./features/policies/PoliciesPage";
@@ -23,6 +26,9 @@ export function AppRoutes() {
         <Route path="replay" element={<ReplayPage />} />
         <Route path="policies" element={<PoliciesPage />} />
         <Route path="tools" element={<ToolsPage />} />
+        <Route path="evaluations" element={<EvaluationsPage />} />
+        <Route path="evaluations/:evaluationId" element={<EvaluationDetailPage />} />
+        <Route path="audit" element={<AuditPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
