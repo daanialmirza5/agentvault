@@ -18,7 +18,7 @@ The steps below are prepared but unexecuted. Verify every URL yourself before yo
 Any VM or home server with Docker:
 
 ```bash
-git clone <your repo> agentvault && cd agentvault
+git clone https://github.com/daanialmirza5/agentvault.git && cd agentvault
 cp .env.example .env              # set AGENTVAULT_API_TOKEN to a long random value
 AGENTVAULT_WEB_PORT=80 docker compose up -d --build
 ```

@@ -1,5 +1,9 @@
 # AgentVault
 
+[![CI](https://github.com/daanialmirza5/agentvault/actions/workflows/ci.yml/badge.svg)](https://github.com/daanialmirza5/agentvault/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+
 **Test every action. Control every tool. Replay every decision.**
 
 AgentVault is an AI agent reliability and security platform. It covers tool permissions, human
@@ -223,7 +227,7 @@ All dependency versions are pinned (`backend/requirements*.txt`, `frontend/packa
 Prerequisites: Python 3.12+, Node.js 22+, PowerShell. Docker is optional.
 
 ```powershell
-git clone <your-fork-url> agentvault
+git clone https://github.com/daanialmirza5/agentvault.git
 cd agentvault
 .\scripts\setup.ps1      # creates backend\.venv, installs pinned deps, migrates and seeds SQLite
 .\scripts\dev.ps1        # opens two windows: API + UI
@@ -368,6 +372,10 @@ commands to verify a deployment.
 * Policy unit tests and CI gating of policy changes on evaluation regressions.
 * An MCP (Model Context Protocol) gateway mode so existing agents can route tool calls through AgentVault.
 * Streaming execution updates (SSE) instead of polling.
+
+## Author
+
+Built by [daanialmirza](https://github.com/daanialmirza5).
 
 ## License
 
