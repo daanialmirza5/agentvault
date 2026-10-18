@@ -21,5 +21,7 @@ export default defineConfig({
     setupFiles: ["./src/tests/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     css: false,
+    // The policy editor renders large forms; user-event + jsdom needs headroom on slow laptops.
+    testTimeout: 15_000,
   },
 });
