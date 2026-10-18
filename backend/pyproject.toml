@@ -18,7 +18,7 @@ filterwarnings = [
 ]
 
 [tool.ruff]
-line-length = 110
+line-length = 120
 target-version = "py312"
 extend-exclude = ["alembic/versions"]
 
@@ -29,6 +29,8 @@ ignore = [
     "S311",   # `random` is used deliberately for seeded, deterministic mock tools
     "RUF012", # mutable class defaults are SQLAlchemy/Pydantic idioms
     "B008",   # FastAPI Depends() in defaults
+    "UP046",  # keep typing.Generic/TypeVar style for broader tooling compatibility
+    "UP047",
 ]
 
 [tool.ruff.lint.per-file-ignores]

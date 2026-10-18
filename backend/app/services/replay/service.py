@@ -36,9 +36,9 @@ from app.core.utils import fingerprint, new_id
 from app.models import Execution, Replay, ToolDefinition
 from app.services.agent_runtime.agents import Action, Agent, AgentContext, FinishAction, ToolCallAction
 from app.services.agent_runtime.engine import make_agent
-from app.services.agent_runtime.runner import GateResult, Resolution, Runner, RunLimits, RunState
+from app.services.agent_runtime.runner import GateResult, Resolution, RunLimits, Runner, RunState
 from app.services.agent_runtime.scenario import ScenarioSpec
-from app.services.audit.events import EventRecord
+from app.services.audit.events import EventRecord, EventType
 from app.services.audit.log import list_events
 from app.services.policy_engine.model import Decision
 from app.services.policy_engine.store import get_version, load_document
@@ -85,13 +85,22 @@ class MemorySink:
 
     def emit(self, record: EventRecord) -> str:
         event_id = f"sim-{len(self.events) + 1}"
-        self.events.append(SimEvent(sequence=len(self.events) + 1, event_type=str(record.event_type),
-                                    tool_id=record.tool_id, outcome=record.outcome, data=dict(record.data),
-                                    policy_version=record.policy_version, id=event_id))
+        self.events.append(
+            SimEvent(
+                sequence=len(self.events) + 1,
+                event_type=str(record.event_type),
+                tool_id=record.tool_id,
+                outcome=record.outcome,
+                data=dict(record.data),
+                policy_version=record.policy_version,
+                id=event_id,
+            )
+        )
         return event_id
 
-    def record_decision(self, *, decision_id: str, event_id: str, decision: Decision,
-                        pending: dict[str, Any], latency_us: float) -> None:
+    def record_decision(
+        self, *, decision_id: str, event_id: str, decision: Decision, pending: dict[str, Any], latency_us: float
+    ) -> None:
         self.decisions.append({"event_id": event_id, "outcome": decision.outcome, "rule": decision.deciding_rule})
 
     def checkpoint(self, state: RunState) -> None:
@@ -110,8 +119,11 @@ class RecordedApprovalGate:
             res = Resolution(outcome="rejected", decided_by="what-if:reject_all", source="simulated")
         else:
             found = self.recorded.get(pending["fingerprint"])
-            res = (Resolution(outcome=found.outcome, decided_by=found.decided_by, note=found.note, source="recorded")
-                   if found else Resolution(outcome="unavailable", source="unavailable"))
+            res = (
+                Resolution(outcome=found.outcome, decided_by=found.decided_by, note=found.note, source="recorded")
+                if found
+                else Resolution(outcome="unavailable", source="unavailable")
+            )
         return GateResult(paused=False, data={"replay_source": res.source}, resolution=res)
 
 
@@ -119,8 +131,9 @@ class ReplayToolInvoker:
     def __init__(self, recorded_outputs: dict[str, dict[str, Any]]) -> None:
         self.recorded = recorded_outputs
 
-    def invoke(self, tool: ToolSpec, pending: dict[str, Any], sandbox: dict[str, Any],
-               seed: int) -> tuple[ToolRunResult | None, str]:
+    def invoke(
+        self, tool: ToolSpec, pending: dict[str, Any], sandbox: dict[str, Any], seed: int
+    ) -> tuple[ToolRunResult | None, str]:
         if tool.deterministic:
             return run_tool(tool, pending["arguments"], sandbox, seed=seed, step=pending["step"]), "reconstructed"
         rec = self.recorded.get(pending["fingerprint"])
@@ -157,8 +170,13 @@ class RecordedAgent:
 def recorded_frames(events: list[Any]) -> list[dict[str, Any]]:
     """Frames for step-through navigation with cumulative reconstructed state."""
     frames = []
-    state: dict[str, Any] = {"status": "pending", "tool_calls": 0, "executed": [], "blocked": [],
-                             "awaiting_approval": None}
+    state: dict[str, Any] = {
+        "status": "pending",
+        "tool_calls": 0,
+        "executed": [],
+        "blocked": [],
+        "awaiting_approval": None,
+    }
     for index, e in enumerate(events):
         t, d = e.event_type, e.data
         if t == "execution.started":
@@ -175,18 +193,29 @@ def recorded_frames(events: list[Any]) -> list[dict[str, Any]]:
             state["blocked"] = [*state["blocked"], d.get("label")]
         elif t.startswith("execution.") and t not in {"execution.created", "execution.started", "execution.resumed"}:
             state["status"] = e.outcome
-        frames.append({
-            "index": index, "sequence": e.sequence, "event_id": getattr(e, "id", None), "event_type": t,
-            "tool_id": e.tool_id, "outcome": e.outcome, "data": d, "policy_version": e.policy_version,
-            "timestamp": e.timestamp.isoformat() if getattr(e, "timestamp", None) else None,
-            "source": d.get("source", "recorded") if t in {"tool.executed", "tool.result", "tool.failed"} else "recorded",
-            "state": {k: (list(v) if isinstance(v, list) else v) for k, v in state.items()},
-        })
+        frames.append(
+            {
+                "index": index,
+                "sequence": e.sequence,
+                "event_id": getattr(e, "id", None),
+                "event_type": t,
+                "tool_id": e.tool_id,
+                "outcome": e.outcome,
+                "data": d,
+                "policy_version": e.policy_version,
+                "timestamp": e.timestamp.isoformat() if getattr(e, "timestamp", None) else None,
+                "source": d.get("source", "recorded")
+                if t in {"tool.executed", "tool.result", "tool.failed"}
+                else "recorded",
+                "state": {k: (list(v) if isinstance(v, list) else v) for k, v in state.items()},
+            }
+        )
     return frames
 
 
-def _recorded_inputs(events: list[Any]) -> tuple[dict[str, Resolution], dict[str, dict[str, Any]],
-                                                 list[ToolCallAction], dict[str, str]]:
+def _recorded_inputs(
+    events: list[Any],
+) -> tuple[dict[str, Resolution], dict[str, dict[str, Any]], list[ToolCallAction], dict[str, str]]:
     fp_by_step: dict[int, str] = {}
     approvals: dict[str, Resolution] = {}
     outputs: dict[str, dict[str, Any]] = {}
@@ -195,18 +224,33 @@ def _recorded_inputs(events: list[Any]) -> tuple[dict[str, Resolution], dict[str
     for e in events:
         d, step = e.data, e.data.get("step")
         if e.event_type == "agent.action_proposed":
-            proposals.append(ToolCallAction(label=d.get("label", ""), tool_id=d.get("tool_id", ""),
-                                            arguments=d.get("arguments"), rationale=d.get("rationale", ""),
-                                            claims=d.get("agent_claims", {})))
+            proposals.append(
+                ToolCallAction(
+                    label=d.get("label", ""),
+                    tool_id=d.get("tool_id", ""),
+                    arguments=d.get("arguments"),
+                    rationale=d.get("rationale", ""),
+                    claims=d.get("agent_claims", {}),
+                )
+            )
         elif e.event_type == "tool.requested" and isinstance(step, int):
             fp_by_step[step] = d["action_fingerprint"]
             if d.get("tool_version") and e.tool_id:
                 versions[e.tool_id] = d["tool_version"]
         elif e.event_type in {"approval.granted", "approval.rejected", "approval.expired"} and step in fp_by_step:
-            outcome = {"approval.granted": "approved", "approval.rejected": "rejected",
-                       "approval.expired": "expired"}[e.event_type]
-            approvals[fp_by_step[step]] = Resolution(outcome=outcome, decided_by=d.get("decided_by"),  # type: ignore[arg-type]
-                                                     note=d.get("note", ""), source="recorded")
+            outcome: Literal["approved", "rejected", "expired"] = (
+                "approved"
+                if e.event_type == "approval.granted"
+                else "rejected"
+                if e.event_type == "approval.rejected"
+                else "expired"
+            )
+            approvals[fp_by_step[step]] = Resolution(
+                outcome=outcome,
+                decided_by=d.get("decided_by"),
+                note=d.get("note", ""),
+                source="recorded",
+            )
         elif e.event_type == "tool.result" and step in fp_by_step:
             outputs[fp_by_step[step]] = {"status": "succeeded", "output": d.get("output")}
         elif e.event_type == "tool.failed" and step in fp_by_step:
@@ -218,15 +262,23 @@ def _registry_for(session: Session, versions: dict[str, str]) -> ToolRegistry:
     """Current registry, but with the exact tool versions the recording used."""
     current = {t.tool_id: t for t in ToolRegistry.from_session(session).all()}
     for tool_id, version in versions.items():
-        row = session.scalar(select(ToolDefinition).where(ToolDefinition.tool_id == tool_id,
-                                                          ToolDefinition.version == version))
+        row = session.scalar(
+            select(ToolDefinition).where(ToolDefinition.tool_id == tool_id, ToolDefinition.version == version)
+        )
         if row is not None:
             current[tool_id] = to_spec(row)
     return ToolRegistry(current.values())
 
 
-def simulate(session: Session, settings: Settings, execution: Execution, *, policy_id: str, policy_version: int | None,
-             approval_strategy: ApprovalStrategy) -> dict[str, Any]:
+def simulate(
+    session: Session,
+    settings: Settings,
+    execution: Execution,
+    *,
+    policy_id: str,
+    policy_version: int | None,
+    approval_strategy: ApprovalStrategy,
+) -> dict[str, Any]:
     events = list_events(session, execution.id)
     if not events:
         raise ValidationFailedError("execution has no recorded events")
@@ -244,32 +296,71 @@ def simulate(session: Session, settings: Settings, execution: Execution, *, poli
     if fingerprint(sandbox) != execution.initial_sandbox_hash:
         warnings.append("The mock sandbox fixture changed since this run was recorded; results may differ.")
     policy_row = get_version(session, policy_id, policy_version)
-    limits = RunLimits(**created.get("limits", {})) if created.get("limits") else RunLimits(
-        settings.max_steps, settings.max_tool_calls, settings.max_identical_calls, settings.execution_timeout_seconds)
+    limits = (
+        RunLimits(**created.get("limits", {}))
+        if created.get("limits")
+        else RunLimits(
+            settings.max_steps,
+            settings.max_tool_calls,
+            settings.max_identical_calls,
+            settings.execution_timeout_seconds,
+        )
+    )
     sink = MemorySink()
     runner = Runner(
-        execution_id=execution.id, scenario_id=execution.scenario_id, spec=spec, agent=agent,
-        registry=_registry_for(session, versions), policy=load_document(policy_row), policy_id=policy_row.policy_id,
-        policy_version=policy_row.version, sink=sink, gate=RecordedApprovalGate(approvals, approval_strategy),
-        limits=limits, seed=execution.seed, invoker=ReplayToolInvoker(outputs),
+        execution_id=execution.id,
+        scenario_id=execution.scenario_id,
+        spec=spec,
+        agent=agent,
+        registry=_registry_for(session, versions),
+        policy=load_document(policy_row),
+        policy_id=policy_row.policy_id,
+        policy_version=policy_row.version,
+        sink=sink,
+        gate=RecordedApprovalGate(approvals, approval_strategy),
+        limits=limits,
+        seed=execution.seed,
+        invoker=ReplayToolInvoker(outputs),
     )
-    sink.emit(EventRecord(event_type="execution.created", outcome="simulated",  # type: ignore[arg-type]
-                          data={"replay_of": execution.id}, policy_version=runner.policy_label))
+    sink.emit(
+        EventRecord(
+            event_type=EventType.EXECUTION_CREATED,
+            outcome="simulated",
+            data={"replay_of": execution.id},
+            policy_version=runner.policy_label,
+        )
+    )
     state = runner.run(RunState(status="pending", agent_state=agent.initial_state(), sandbox=sandbox))
     frames = []
     for index, e in enumerate(sink.events):
         source = e.data.get("source") or ("re-evaluated" if e.event_type == "policy.evaluated" else "simulated")
-        frames.append({"index": index, "sequence": e.sequence, "event_id": e.id, "event_type": e.event_type,
-                       "tool_id": e.tool_id, "outcome": e.outcome, "data": e.data,
-                       "policy_version": e.policy_version, "timestamp": None, "source": source})
+        frames.append(
+            {
+                "index": index,
+                "sequence": e.sequence,
+                "event_id": e.id,
+                "event_type": e.event_type,
+                "tool_id": e.tool_id,
+                "outcome": e.outcome,
+                "data": e.data,
+                "policy_version": e.policy_version,
+                "timestamp": None,
+                "source": source,
+            }
+        )
     unavailable = [f["index"] for f in frames if f["source"] == "unavailable" or f["outcome"] == "unavailable"]
     return {
-        "frames": frames, "final_status": state.status, "status_reason": state.status_reason,
-        "warnings": warnings, "unavailable_frames": unavailable,
+        "frames": frames,
+        "final_status": state.status,
+        "status_reason": state.status_reason,
+        "warnings": warnings,
+        "unavailable_frames": unavailable,
         "divergence": first_divergence(events, sink.events),
         "tool_calls": {"original": tool_call_table(events), "replay": tool_call_table(sink.events)},
-        "sandbox_effects": {k: len(state.sandbox.get(k, [])) for k in ("outbox", "drafts", "tickets",
-                                                                       "record_changes", "export_attempts")},
+        "sandbox_effects": {
+            k: len(state.sandbox.get(k, []))
+            for k in ("outbox", "drafts", "tickets", "record_changes", "export_attempts")
+        },
     }
 
 
@@ -284,22 +375,42 @@ def create_replay(session: Session, settings: Settings, request: ReplayCreate) -
     policy_version = request.policy_version or (execution.policy_version if policy_id == execution.policy_id else None)
     if request.mode == "recorded":
         result: dict[str, Any] = {
-            "frames": recorded_frames(events), "final_status": execution.status,
-            "status_reason": execution.status_reason, "warnings": [], "unavailable_frames": [],
-            "divergence": None, "tool_calls": {"original": tool_call_table(events), "replay": None},
+            "frames": recorded_frames(events),
+            "final_status": execution.status,
+            "status_reason": execution.status_reason,
+            "warnings": [],
+            "unavailable_frames": [],
+            "divergence": None,
+            "tool_calls": {"original": tool_call_table(events), "replay": None},
         }
         pv = execution.policy_version
     else:
-        result = simulate(session, settings, execution, policy_id=policy_id, policy_version=policy_version,
-                          approval_strategy=request.approval_strategy)
+        result = simulate(
+            session,
+            settings,
+            execution,
+            policy_id=policy_id,
+            policy_version=policy_version,
+            approval_strategy=request.approval_strategy,
+        )
         pv = get_version(session, policy_id, policy_version).version
-    result["original"] = {"execution_id": execution.id, "status": execution.status,
-                          "policy": f"{execution.policy_id}@v{execution.policy_version}",
-                          "scenario": f"{execution.scenario_id}@v{execution.scenario_version}",
-                          "event_count": len(events), "seed": execution.seed}
+    result["original"] = {
+        "execution_id": execution.id,
+        "status": execution.status,
+        "policy": f"{execution.policy_id}@v{execution.policy_version}",
+        "scenario": f"{execution.scenario_id}@v{execution.scenario_version}",
+        "event_count": len(events),
+        "seed": execution.seed,
+    }
     result["approval_strategy"] = request.approval_strategy
-    replay = Replay(id=new_id("rpl"), execution_id=execution.id, mode=request.mode, policy_id=policy_id,
-                    policy_version=pv, result=result)
+    replay = Replay(
+        id=new_id("rpl"),
+        execution_id=execution.id,
+        mode=request.mode,
+        policy_id=policy_id,
+        policy_version=pv,
+        result=result,
+    )
     session.add(replay)
     session.commit()
     return replay
@@ -312,11 +423,20 @@ def compare_executions(session: Session, request: CompareRequest) -> dict[str, A
         raise NotFoundError("both executions must exist")
     le, re_ = list_events(session, left.id), list_events(session, right.id)
     return {
-        "left": {"execution_id": left.id, "policy": f"{left.policy_id}@v{left.policy_version}",
-                 "scenario": f"{left.scenario_id}@v{left.scenario_version}", "status": left.status, "seed": left.seed},
-        "right": {"execution_id": right.id, "policy": f"{right.policy_id}@v{right.policy_version}",
-                  "scenario": f"{right.scenario_id}@v{right.scenario_version}", "status": right.status,
-                  "seed": right.seed},
+        "left": {
+            "execution_id": left.id,
+            "policy": f"{left.policy_id}@v{left.policy_version}",
+            "scenario": f"{left.scenario_id}@v{left.scenario_version}",
+            "status": left.status,
+            "seed": left.seed,
+        },
+        "right": {
+            "execution_id": right.id,
+            "policy": f"{right.policy_id}@v{right.policy_version}",
+            "scenario": f"{right.scenario_id}@v{right.scenario_version}",
+            "status": right.status,
+            "seed": right.seed,
+        },
         "same_scenario": (left.scenario_id, left.scenario_version) == (right.scenario_id, right.scenario_version),
         "divergence": first_divergence(le, re_),
         "tool_calls": {"left": tool_call_table(le), "right": tool_call_table(re_)},

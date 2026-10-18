@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
@@ -16,7 +16,7 @@ from app.core.utils import fingerprint, new_id, utcnow
 from app.models import Approval, Execution, PolicyDecisionRecord
 from app.models.execution import TERMINAL_STATUSES
 from app.services.agent_runtime.agents import Agent, build_agent
-from app.services.agent_runtime.runner import GateResult, Resolution, Runner, RunLimits, RunState
+from app.services.agent_runtime.runner import GateResult, Resolution, RunLimits, Runner, RunState
 from app.services.agent_runtime.scenario import ScenarioSpec, get_scenario
 from app.services.audit.events import EventRecord, EventType
 from app.services.audit.log import append_event
@@ -45,16 +45,28 @@ class DbSink:
     def emit(self, record: EventRecord) -> str:
         return append_event(self.session, self.execution, record).id
 
-    def record_decision(self, *, decision_id: str, event_id: str, decision: Decision,
-                        pending: dict[str, Any], latency_us: float) -> None:
-        self.session.add(PolicyDecisionRecord(
-            id=decision_id, execution_id=self.execution.id, event_id=event_id, policy_id=decision.policy_id,
-            policy_version=decision.policy_version, tool_id=pending["tool_id"], tool_version=pending["tool_version"],
-            arguments_redacted=pending["arguments_redacted"], action_hash=pending["action_hash"],
-            outcome=decision.outcome, reason=decision.reason,
-            matched_rules=[m.model_dump() for m in decision.matched_rules], deciding_rule=decision.deciding_rule,
-            latency_us=latency_us, created_at=utcnow(),
-        ))
+    def record_decision(
+        self, *, decision_id: str, event_id: str, decision: Decision, pending: dict[str, Any], latency_us: float
+    ) -> None:
+        self.session.add(
+            PolicyDecisionRecord(
+                id=decision_id,
+                execution_id=self.execution.id,
+                event_id=event_id,
+                policy_id=decision.policy_id,
+                policy_version=decision.policy_version,
+                tool_id=pending["tool_id"],
+                tool_version=pending["tool_version"],
+                arguments_redacted=pending["arguments_redacted"],
+                action_hash=pending["action_hash"],
+                outcome=decision.outcome,
+                reason=decision.reason,
+                matched_rules=[m.model_dump() for m in decision.matched_rules],
+                deciding_rule=decision.deciding_rule,
+                latency_us=latency_us,
+                created_at=utcnow(),
+            )
+        )
 
     def checkpoint(self, state: RunState) -> None:
         write_state(self.execution, state)
@@ -78,31 +90,53 @@ class LiveApprovalGate:
             for o in state.agent_state.get("agent", {}).get("observations", [])[-5:]
         ]
         approval = Approval(
-            id=new_id("apr"), execution_id=self.execution.id, decision_id=pending["decision_id"],
-            step=pending["step"], action_label=pending["label"], action_hash=pending["action_hash"],
-            tool_id=tool_id, tool_version=pending["tool_version"] or "",
+            id=new_id("apr"),
+            execution_id=self.execution.id,
+            decision_id=pending["decision_id"],
+            step=pending["step"],
+            action_label=pending["label"],
+            action_hash=pending["action_hash"],
+            tool_id=tool_id,
+            tool_version=pending["tool_version"] or "",
             arguments_redacted=pending["arguments_redacted"],
-            risk_level=pending.get("risk_level") or "unknown", reason=decision.reason,
-            context={"task": self.task, "rationale": pending["rationale"], "agent_claims": pending["claims"],
-                     "deciding_rule": decision.deciding_rule, "recent_observations": recent,
-                     "environment": self.execution.environment,
-                     "policy": f"{decision.policy_id}@v{decision.policy_version}"},
-            status="pending", created_at=now, expires_at=now + timedelta(seconds=self.ttl),
+            risk_level=pending.get("risk_level") or "unknown",
+            reason=decision.reason,
+            context={
+                "task": self.task,
+                "rationale": pending["rationale"],
+                "agent_claims": pending["claims"],
+                "deciding_rule": decision.deciding_rule,
+                "recent_observations": recent,
+                "environment": self.execution.environment,
+                "policy": f"{decision.policy_id}@v{decision.policy_version}",
+            },
+            status="pending",
+            created_at=now,
+            expires_at=now + timedelta(seconds=self.ttl),
         )
         self.session.add(approval)
         self.session.flush()
         self.execution.pending_approval_id = approval.id
-        return GateResult(paused=True, approval_id=approval.id,
-                          data={"expires_at": approval.expires_at.isoformat(), "ttl_seconds": self.ttl})
+        return GateResult(
+            paused=True,
+            approval_id=approval.id,
+            data={"expires_at": approval.expires_at.isoformat(), "ttl_seconds": self.ttl},
+        )
 
 
 def read_state(execution: Execution) -> RunState:
     return RunState(
-        status=execution.status, status_reason=execution.status_reason, step_count=execution.step_count,
-        tool_call_count=execution.tool_call_count, agent_state=execution.agent_state.get("agent", {}),
-        recent_calls=list(execution.agent_state.get("recent_calls", [])), sandbox=execution.sandbox_state,
-        pending_action=execution.pending_action, pending_approval_id=execution.pending_approval_id,
-        final_output=execution.final_output, active_ms=execution.active_ms,
+        status=execution.status,
+        status_reason=execution.status_reason,
+        step_count=execution.step_count,
+        tool_call_count=execution.tool_call_count,
+        agent_state=execution.agent_state.get("agent", {}),
+        recent_calls=list(execution.agent_state.get("recent_calls", [])),
+        sandbox=execution.sandbox_state,
+        pending_action=execution.pending_action,
+        pending_approval_id=execution.pending_approval_id,
+        final_output=execution.final_output,
+        active_ms=execution.active_ms,
     )
 
 
@@ -145,15 +179,29 @@ def build_runner(session: Session, settings: Settings, execution: Execution) -> 
     sink = DbSink(session, execution)
     gate = LiveApprovalGate(session, execution, settings.approval_ttl_seconds, spec.task)
     return Runner(
-        execution_id=execution.id, scenario_id=execution.scenario_id, spec=spec,
-        agent=make_agent(spec, settings), registry=registry, policy=load_document(policy_row),
-        policy_id=execution.policy_id, policy_version=execution.policy_version, sink=sink, gate=gate,
-        limits=effective_limits(settings, spec), seed=execution.seed,
+        execution_id=execution.id,
+        scenario_id=execution.scenario_id,
+        spec=spec,
+        agent=make_agent(spec, settings),
+        registry=registry,
+        policy=load_document(policy_row),
+        policy_id=execution.policy_id,
+        policy_version=execution.policy_version,
+        sink=sink,
+        gate=gate,
+        limits=effective_limits(settings, spec),
+        seed=execution.seed,
     )
 
 
-def create_execution(session: Session, settings: Settings, request: ExecutionCreate, *,
-                     origin: str = "manual", evaluation_id: str | None = None) -> Execution:
+def create_execution(
+    session: Session,
+    settings: Settings,
+    request: ExecutionCreate,
+    *,
+    origin: str = "manual",
+    evaluation_id: str | None = None,
+) -> Execution:
     scenario = get_scenario(session, request.scenario_id, request.scenario_version)
     spec = ScenarioSpec.model_validate(scenario.spec)
     if request.environment:
@@ -164,30 +212,61 @@ def create_execution(session: Session, settings: Settings, request: ExecutionCre
     agent = make_agent(spec, settings)
     sandbox = initial_sandbox()
     execution = Execution(
-        id=new_id("exe"), scenario_id=scenario.scenario_id, scenario_version=scenario.version,
-        policy_id=policy_row.policy_id, policy_version=policy_row.version, agent_type=spec.agent.type,
-        environment=spec.environment, seed=spec.seed, origin=origin, evaluation_id=evaluation_id,
-        status="pending", task=spec.task, spec=spec.model_dump(mode="json"),
-        agent_state={"agent": agent.initial_state(), "recent_calls": []}, sandbox_state=sandbox,
-        initial_sandbox_hash=fingerprint(sandbox), last_event_hash="0" * 64,
+        id=new_id("exe"),
+        scenario_id=scenario.scenario_id,
+        scenario_version=scenario.version,
+        policy_id=policy_row.policy_id,
+        policy_version=policy_row.version,
+        agent_type=spec.agent.type,
+        environment=spec.environment,
+        seed=spec.seed,
+        origin=origin,
+        evaluation_id=evaluation_id,
+        status="pending",
+        task=spec.task,
+        spec=spec.model_dump(mode="json"),
+        agent_state={"agent": agent.initial_state(), "recent_calls": []},
+        sandbox_state=sandbox,
+        initial_sandbox_hash=fingerprint(sandbox),
+        last_event_hash="0" * 64,
     )
     session.add(execution)
     session.flush()
-    append_event(session, execution, EventRecord(
-        event_type=EventType.EXECUTION_CREATED, outcome="pending", policy_version=f"{policy_row.policy_id}@v{policy_row.version}",
-        data={"scenario_id": scenario.scenario_id, "scenario_version": scenario.version,
-              "scenario_hash": scenario.content_hash, "policy_hash": policy_row.content_hash,
-              "agent_type": spec.agent.type, "deterministic_agent": agent.deterministic,
-              "environment": spec.environment, "seed": spec.seed, "task": spec.task, "origin": origin,
-              "initial_sandbox_hash": execution.initial_sandbox_hash,
-              "limits": vars(effective_limits(settings, spec))},
-    ))
+    append_event(
+        session,
+        execution,
+        EventRecord(
+            event_type=EventType.EXECUTION_CREATED,
+            outcome="pending",
+            policy_version=f"{policy_row.policy_id}@v{policy_row.version}",
+            data={
+                "scenario_id": scenario.scenario_id,
+                "scenario_version": scenario.version,
+                "scenario_hash": scenario.content_hash,
+                "policy_hash": policy_row.content_hash,
+                "agent_type": spec.agent.type,
+                "deterministic_agent": agent.deterministic,
+                "environment": spec.environment,
+                "seed": spec.seed,
+                "task": spec.task,
+                "origin": origin,
+                "initial_sandbox_hash": execution.initial_sandbox_hash,
+                "limits": vars(effective_limits(settings, spec)),
+            },
+        ),
+    )
     session.commit()
     return execution
 
 
-def start_execution(session: Session, settings: Settings, request: ExecutionCreate, *,
-                    origin: str = "manual", evaluation_id: str | None = None) -> Execution:
+def start_execution(
+    session: Session,
+    settings: Settings,
+    request: ExecutionCreate,
+    *,
+    origin: str = "manual",
+    evaluation_id: str | None = None,
+) -> Execution:
     execution = create_execution(session, settings, request, origin=origin, evaluation_id=evaluation_id)
     execution.started_at = utcnow()
     build_runner(session, settings, execution).run(read_state(execution))
@@ -199,6 +278,37 @@ def resume_execution(session: Session, settings: Settings, execution: Execution,
     runner = build_runner(session, settings, execution)
     runner.resume(read_state(execution), resolution)
     return execution
+
+
+def recover_interrupted(session: Session) -> int:
+    """Fail executions left 'pending' or 'running' by a previous process (e.g. a crash mid-tool).
+
+    Safe only with a single application process per database, which is the documented
+    deployment model for SQLite.
+    """
+    rows = session.scalars(select(Execution).where(Execution.status.in_(["pending", "running"]))).all()
+    for execution in rows:
+        reason = "interrupted: the server stopped while this execution was in progress"
+        append_event(
+            session,
+            execution,
+            EventRecord(
+                event_type=EventType.EXECUTION_FAILED,
+                outcome="failed",
+                policy_version=f"{execution.policy_id}@v{execution.policy_version}",
+                data={
+                    "reason": reason,
+                    "summary": "",
+                    "steps": execution.step_count,
+                    "tool_calls": execution.tool_call_count,
+                },
+            ),
+        )
+        execution.status, execution.status_reason = "failed", reason
+        execution.pending_action = None
+        execution.finished_at = utcnow()
+    session.commit()
+    return len(rows)
 
 
 def cancel_execution(session: Session, settings: Settings, execution: Execution, reason: str) -> Execution:

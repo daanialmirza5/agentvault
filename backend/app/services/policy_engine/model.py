@@ -10,16 +10,30 @@ Effect = Literal["allow", "deny", "require_approval"]
 EFFECT_SEVERITY: dict[str, int] = {"allow": 0, "require_approval": 1, "deny": 2}
 
 ConditionOp = Literal[
-    "eq", "neq", "in", "not_in", "contains", "prefix", "suffix", "glob",
-    "exists", "not_exists", "gt", "gte", "lt", "lte",
+    "eq",
+    "neq",
+    "in",
+    "not_in",
+    "contains",
+    "prefix",
+    "suffix",
+    "glob",
+    "exists",
+    "not_exists",
+    "gt",
+    "gte",
+    "lt",
+    "lte",
 ]
 
 
 class ArgumentCondition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    path: str = Field(pattern=r"^[A-Za-z0-9_]{1,64}(\.[A-Za-z0-9_]{1,64}){0,5}$",
-                      description="Dotted path into the tool arguments, e.g. `field` or `address.country`.")
+    path: str = Field(
+        pattern=r"^[A-Za-z0-9_]{1,64}(\.[A-Za-z0-9_]{1,64}){0,5}$",
+        description="Dotted path into the tool arguments, e.g. `field` or `address.country`.",
+    )
     op: ConditionOp
     value: Any = None
 
@@ -64,8 +78,9 @@ class PolicyRule(BaseModel):
     id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{1,63}$")
     description: str = Field(default="", max_length=500)
     effect: Effect
-    priority: int = Field(default=100, ge=0, le=10_000,
-                          description="Lower runs first; only orders rules with the same effect.")
+    priority: int = Field(
+        default=100, ge=0, le=10_000, description="Lower runs first; only orders rules with the same effect."
+    )
     enabled: bool = True
     match: RuleMatch = Field(default_factory=RuleMatch)
 

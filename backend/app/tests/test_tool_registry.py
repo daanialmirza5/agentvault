@@ -27,10 +27,17 @@ def registry(session: Session) -> ToolRegistry:
 
 def _custom(**overrides: object) -> ToolCreate:
     data: dict[str, object] = {
-        "tool_id": "weather.lookup", "name": "Weather", "category": "info", "risk_level": "low",
+        "tool_id": "weather.lookup",
+        "name": "Weather",
+        "category": "info",
+        "risk_level": "low",
         "mutating": False,
-        "input_schema": {"type": "object", "properties": {"city": {"type": "string"}},
-                         "required": ["city"], "additionalProperties": False},
+        "input_schema": {
+            "type": "object",
+            "properties": {"city": {"type": "string"}},
+            "required": ["city"],
+            "additionalProperties": False,
+        },
         "mock_config": {"response": {"forecast": "sunny"}},
     }
     data.update(overrides)
@@ -58,11 +65,11 @@ def test_valid_arguments_pass(registry: ToolRegistry) -> None:
 @pytest.mark.parametrize(
     "arguments",
     [
-        {"to": "a@example.com", "subject": "Hi"},                                  # missing field
-        {"to": "a@example.com", "subject": "Hi", "body": "x", "bcc": "x@y.z"},     # unknown field
-        {"to": "not-an-email", "subject": "Hi", "body": "x"},                      # format
-        {"to": "a@example.com", "subject": "", "body": "x"},                       # minLength
-        ["not", "an", "object"],                                                   # wrong type
+        {"to": "a@example.com", "subject": "Hi"},  # missing field
+        {"to": "a@example.com", "subject": "Hi", "body": "x", "bcc": "x@y.z"},  # unknown field
+        {"to": "not-an-email", "subject": "Hi", "body": "x"},  # format
+        {"to": "a@example.com", "subject": "", "body": "x"},  # minLength
+        ["not", "an", "object"],  # wrong type
     ],
 )
 def test_malformed_arguments_are_rejected(registry: ToolRegistry, arguments: object) -> None:
@@ -94,8 +101,8 @@ def test_duplicate_version_and_builtin_shadowing_rejected(session: Session, regi
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"implementation": "mock.email.send"},                       # cannot bind to privileged mocks
-        {"input_schema": {"type": "object"}},                         # must forbid extra properties
+        {"implementation": "mock.email.send"},  # cannot bind to privileged mocks
+        {"input_schema": {"type": "object"}},  # must forbid extra properties
         {"input_schema": {"type": "object", "additionalProperties": False, "properties": {"a": {"type": "nope"}}}},
         {"tool_id": "Bad Id"},
     ],
@@ -111,7 +118,7 @@ def test_tool_runs_against_copy_of_sandbox(registry: ToolRegistry) -> None:
     sandbox = initial_sandbox()
     result = run_tool(spec, {"to": "a@example.com", "subject": "s", "body": "b"}, sandbox, seed=1, step=1)
     assert result.status == "succeeded"
-    assert sandbox["outbox"] == []                       # original untouched
+    assert sandbox["outbox"] == []  # original untouched
     assert len(result.sandbox["outbox"]) == 1
 
 
@@ -127,16 +134,19 @@ def test_tool_timeout_is_enforced_and_leaves_sandbox_unchanged(registry: ToolReg
 def test_protected_record_refused_by_mock_backend(registry: ToolRegistry) -> None:
     spec = registry.get("crm.update_record")
     assert spec is not None
-    result = run_tool(spec, {"customer_id": "CUST-0001", "field": "status", "value": "closed"},
-                      initial_sandbox(), seed=1, step=1)
+    result = run_tool(
+        spec, {"customer_id": "CUST-0001", "field": "status", "value": "closed"}, initial_sandbox(), seed=1, step=1
+    )
     assert result.status == "failed" and "protected" in result.error
 
 
 def test_seeded_failures_are_deterministic(registry: ToolRegistry) -> None:
     spec = registry.get("ops.check_inventory")
     assert spec is not None
-    runs = [[run_tool(spec, {"sku": "SKU-1"}, initial_sandbox(), seed=7, step=s).status for s in range(1, 9)]
-            for _ in range(3)]
+    runs = [
+        [run_tool(spec, {"sku": "SKU-1"}, initial_sandbox(), seed=7, step=s).status for s in range(1, 9)]
+        for _ in range(3)
+    ]
     assert runs[0] == runs[1] == runs[2]
     assert {"succeeded", "failed"} <= set(runs[0])
 
@@ -156,7 +166,18 @@ def test_calculator_evaluates_arithmetic(registry: ToolRegistry) -> None:
 
 
 def test_toolspec_operation() -> None:
-    spec = ToolSpec(tool_id="a.b", version="1.0.0", name="n", description="", category="c", risk_level="low",
-                    mutating=True, requires_approval=False, timeout_seconds=1, implementation="mock.echo",
-                    input_schema={}, output_schema={})
+    spec = ToolSpec(
+        tool_id="a.b",
+        version="1.0.0",
+        name="n",
+        description="",
+        category="c",
+        risk_level="low",
+        mutating=True,
+        requires_approval=False,
+        timeout_seconds=1,
+        implementation="mock.echo",
+        input_schema={},
+        output_schema={},
+    )
     assert spec.operation == "write"

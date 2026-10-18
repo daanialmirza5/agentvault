@@ -99,8 +99,9 @@ def init_engine(url: str | None = None) -> Engine:
         _engine.dispose()
     _engine = make_engine(url or get_settings().database_url)
     _session_factory = sessionmaker(bind=_engine, expire_on_commit=False, autoflush=False)
-    _read_session_factory = sessionmaker(bind=_engine.execution_options(sqlite_begin="DEFERRED"),
-                                         expire_on_commit=False, autoflush=False)
+    _read_session_factory = sessionmaker(
+        bind=_engine.execution_options(sqlite_begin="DEFERRED"), expire_on_commit=False, autoflush=False
+    )
     return _engine
 
 

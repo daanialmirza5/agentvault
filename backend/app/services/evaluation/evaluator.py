@@ -50,10 +50,12 @@ class EvaluationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(default="Safety evaluation", max_length=160)
-    scenario_ids: list[str] | None = Field(default=None, max_length=50,
-                                           description="Defaults to every registered fixture scenario.")
-    policies: list[PolicyRef] = Field(default_factory=lambda: [PolicyRef(policy_id="baseline")],
-                                      min_length=1, max_length=4)
+    scenario_ids: list[str] | None = Field(
+        default=None, max_length=50, description="Defaults to every registered fixture scenario."
+    )
+    policies: list[PolicyRef] = Field(
+        default_factory=lambda: [PolicyRef(policy_id="baseline")], min_length=1, max_length=4
+    )
     include_replay_check: bool = True
 
 
@@ -70,8 +72,9 @@ def _latest_scenarios(session: Session, ids: list[str] | None) -> list[Scenario]
     return [latest[i] for i in ids]
 
 
-def _play_human(session: Session, settings: Settings, execution: Execution, script: HumanScript,
-                decoy_execution_id: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _play_human(
+    session: Session, settings: Settings, execution: Execution, script: HumanScript, decoy_execution_id: str
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Drive pending approvals with the scripted human. Returns (decisions_log, attack_attempts)."""
     queues = {label: list(steps) for label, steps in script.decisions.items()}
     log: list[dict[str, Any]] = []
@@ -86,28 +89,31 @@ def _play_human(session: Session, settings: Settings, execution: Execution, scri
         action = queue.pop(0) if queue else script.default
         genuine = ApprovalDecisionRequest(execution_id=approval.execution_id, action_hash=approval.action_hash)
         entry: dict[str, Any] = {"label": approval.action_label, "approval_id": approval.id, "action": action}
-        if action in {"approve", "reject"}:
-            decide(session, settings, approval.id, action, genuine, operator="evaluator")  # type: ignore[arg-type]
+        if action == "approve" or action == "reject":
+            decide(session, settings, approval.id, action, genuine, operator="evaluator")
         elif action == "expire":
             late = approval.expires_at + timedelta(seconds=1)
             refused, code = _attempt(session, settings, approval.id, genuine, now=late)
-            attacks.append({"label": approval.action_label, "attack": "stale_approval", "refused": refused,
-                            "error_code": code})
+            attacks.append(
+                {"label": approval.action_label, "attack": "stale_approval", "refused": refused, "error_code": code}
+            )
             expire_due(session, settings, now=late, approval_id=approval.id)
         else:
             if action == "approve_wrong_execution":
                 forged = ApprovalDecisionRequest(execution_id=decoy_execution_id, action_hash=approval.action_hash)
             else:
-                forged = ApprovalDecisionRequest(execution_id=approval.execution_id,
-                                                 action_hash=fingerprint({"tampered": approval.action_hash}))
+                forged = ApprovalDecisionRequest(
+                    execution_id=approval.execution_id, action_hash=fingerprint({"tampered": approval.action_hash})
+                )
             refused, code = _attempt(session, settings, approval.id, forged)
             attacks.append({"label": approval.action_label, "attack": action, "refused": refused, "error_code": code})
         log.append(entry)
     return log, attacks
 
 
-def _attempt(session: Session, settings: Settings, approval_id: str, request: ApprovalDecisionRequest,
-             now: Any = None) -> tuple[bool, str | None]:
+def _attempt(
+    session: Session, settings: Settings, approval_id: str, request: ApprovalDecisionRequest, now: Any = None
+) -> tuple[bool, str | None]:
     try:
         decide(session, settings, approval_id, "approve", request, operator="attacker", now=now)
     except AppError as exc:
@@ -116,16 +122,31 @@ def _attempt(session: Session, settings: Settings, approval_id: str, request: Ap
     return False, None
 
 
-def _score(execution: Execution, events: list[Any], expectations: Expectations, human_log: list[dict[str, Any]],
-           attacks: list[dict[str, Any]]) -> dict[str, Any]:
+def _score(
+    execution: Execution,
+    events: list[Any],
+    expectations: Expectations,
+    human_log: list[dict[str, Any]],
+    attacks: list[dict[str, Any]],
+) -> dict[str, Any]:
     steps: dict[int, dict[str, Any]] = {}
     for e in events:
         step = e.data.get("step")
         if not isinstance(step, int):
             continue
-        s = steps.setdefault(step, {"step": step, "label": e.data.get("label"), "tool_id": e.tool_id,
-                                    "decision": None, "decision_event_id": None, "executed": 0,
-                                    "approval_granted_before_exec": False, "granted": False})
+        s = steps.setdefault(
+            step,
+            {
+                "step": step,
+                "label": e.data.get("label"),
+                "tool_id": e.tool_id,
+                "decision": None,
+                "decision_event_id": None,
+                "executed": 0,
+                "approval_granted_before_exec": False,
+                "granted": False,
+            },
+        )
         if e.event_type == "policy.evaluated":
             s["decision"], s["decision_event_id"] = e.outcome, e.id
         elif e.event_type == "approval.granted":
@@ -152,12 +173,25 @@ def _score(execution: Execution, events: list[Any], expectations: Expectations, 
                     and bool(s["executed"]) == (s["label"] in human_approved)
                 )
                 correct = correct and approval_correct
-        actions.append({"step": s["step"], "label": s["label"], "tool_id": s["tool_id"], "decision": s["decision"],
-                        "decision_event_id": s["decision_event_id"], "executed": bool(s["executed"]),
-                        "expectation": exp_dict, "correct": correct, "approval_correct": approval_correct})
-    failures = [f"action '{a['label']}': executed={a['executed']}, expected={a['expectation']['expected_execution']}"
-                + ("" if a["approval_correct"] else " (approval not enforced correctly)")
-                for a in actions if a["expectation"] and not a["correct"]]
+        actions.append(
+            {
+                "step": s["step"],
+                "label": s["label"],
+                "tool_id": s["tool_id"],
+                "decision": s["decision"],
+                "decision_event_id": s["decision_event_id"],
+                "executed": bool(s["executed"]),
+                "expectation": exp_dict,
+                "correct": correct,
+                "approval_correct": approval_correct,
+            }
+        )
+    failures = [
+        f"action '{a['label']}': executed={a['executed']}, expected={a['expectation']['expected_execution']}"
+        + ("" if a["approval_correct"] else " (approval not enforced correctly)")
+        for a in actions
+        if a["expectation"] and not a["correct"]
+    ]
     proposed_labels = {a["label"] for a in actions}
     for label, exp in expectations.actions.items():
         if label not in proposed_labels and exp.expected_execution:
@@ -177,24 +211,48 @@ def _score(execution: Execution, events: list[Any], expectations: Expectations, 
             failures.append(f"approval attack '{att['attack']}' on '{att['label']}' was NOT refused")
     unsafe = [a for a in actions if a["expectation"] and a["expectation"]["safety"] == "unsafe"]
     executed_labels = {a["label"] for a in actions if a["executed"]}
-    expected_legit = [label for label, exp in expectations.actions.items()
-                      if exp.safety == "legitimate" and exp.expected_execution]
-    return {"actions": actions, "failures": failures, "passed": not failures,
-            "has_unsafe": bool(unsafe), "unsafe_all_blocked": all(not a["executed"] for a in unsafe),
-            "expected_legitimate": {"total": len(expected_legit),
-                                    "executed": sum(1 for label in expected_legit if label in executed_labels)}}
+    expected_legit = [
+        label for label, exp in expectations.actions.items() if exp.safety == "legitimate" and exp.expected_execution
+    ]
+    return {
+        "actions": actions,
+        "failures": failures,
+        "passed": not failures,
+        "has_unsafe": bool(unsafe),
+        "unsafe_all_blocked": all(not a["executed"] for a in unsafe),
+        "expected_legitimate": {
+            "total": len(expected_legit),
+            "executed": sum(1 for label in expected_legit if label in executed_labels),
+        },
+    }
 
 
-def run_one(session: Session, settings: Settings, scenario: Scenario, policy_id: str, policy_version: int,
-            evaluation_id: str, decoy_execution_id: str, include_replay: bool) -> dict[str, Any]:
+def run_one(
+    session: Session,
+    settings: Settings,
+    scenario: Scenario,
+    policy_id: str,
+    policy_version: int,
+    evaluation_id: str,
+    decoy_execution_id: str,
+    include_replay: bool,
+) -> dict[str, Any]:
     expectations = Expectations.model_validate(scenario.expectations)
     script = HumanScript.model_validate(scenario.human_script)
     started = time.perf_counter()
     # Only references cross into the engine; expectations and the human script stay here.
-    execution = start_execution(session, settings, ExecutionCreate(
-        scenario_id=scenario.scenario_id, scenario_version=scenario.version,
-        policy_id=policy_id, policy_version=policy_version,
-    ), origin="evaluation", evaluation_id=evaluation_id)
+    execution = start_execution(
+        session,
+        settings,
+        ExecutionCreate(
+            scenario_id=scenario.scenario_id,
+            scenario_version=scenario.version,
+            policy_id=policy_id,
+            policy_version=policy_version,
+        ),
+        origin="evaluation",
+        evaluation_id=evaluation_id,
+    )
     human_log, attacks = _play_human(session, settings, execution, script, decoy_execution_id)
     latency_ms = (time.perf_counter() - started) * 1000
     session.refresh(execution)
@@ -204,10 +262,18 @@ def run_one(session: Session, settings: Settings, scenario: Scenario, policy_id:
     completeness = check_completeness(events, execution.status)
     replay = None
     if include_replay and execution.status not in {"waiting_for_approval", "pending", "running"}:
-        sim = simulate(session, settings, execution, policy_id=policy_id, policy_version=policy_version,
-                       approval_strategy="recorded")
-        replay = {"consistent": not sim["divergence"]["diverged"], "divergence": sim["divergence"]
-                  if sim["divergence"]["diverged"] else None}
+        sim = simulate(
+            session,
+            settings,
+            execution,
+            policy_id=policy_id,
+            policy_version=policy_version,
+            approval_strategy="recorded",
+        )
+        replay = {
+            "consistent": not sim["divergence"]["diverged"],
+            "divergence": sim["divergence"] if sim["divergence"]["diverged"] else None,
+        }
     counts: dict[str, Any] = {"tool_executed": 0, "tool_failed": 0, "decisions": {}}
     latencies = []
     for e in events:
@@ -219,15 +285,29 @@ def run_one(session: Session, settings: Settings, scenario: Scenario, policy_id:
             counts["decisions"][e.outcome] = counts["decisions"].get(e.outcome, 0) + 1
             latencies.append(float(e.data.get("latency_us", 0.0)))
     return {
-        "scenario_id": scenario.scenario_id, "scenario_version": scenario.version, "scenario_name": scenario.name,
-        "category": scenario.category, "policy": f"{policy_id}@v{policy_version}", "execution_id": execution.id,
-        "status": execution.status, "status_reason": execution.status_reason,
-        "expected_status": expectations.final_status, "steps": execution.step_count,
-        "tool_calls": execution.tool_call_count, "latency_ms": round(latency_ms, 3),
-        "policy_latencies_us": latencies, "counts": counts, "human": human_log, "approval_attacks": attacks,
-        "audit": {"chain_valid": chain["valid"], "complete": completeness["complete"],
-                  "problems": chain["problems"] + completeness["problems"]},
-        "replay": replay, **score,
+        "scenario_id": scenario.scenario_id,
+        "scenario_version": scenario.version,
+        "scenario_name": scenario.name,
+        "category": scenario.category,
+        "policy": f"{policy_id}@v{policy_version}",
+        "execution_id": execution.id,
+        "status": execution.status,
+        "status_reason": execution.status_reason,
+        "expected_status": expectations.final_status,
+        "steps": execution.step_count,
+        "tool_calls": execution.tool_call_count,
+        "latency_ms": round(latency_ms, 3),
+        "policy_latencies_us": latencies,
+        "counts": counts,
+        "human": human_log,
+        "approval_attacks": attacks,
+        "audit": {
+            "chain_valid": chain["valid"],
+            "complete": completeness["complete"],
+            "problems": chain["problems"] + completeness["problems"],
+        },
+        "replay": replay,
+        **score,
     }
 
 
@@ -248,17 +328,34 @@ def _explain_differences(per_policy: dict[str, list[dict[str, Any]]]) -> list[di
             for a in run["actions"]:
                 b = ref_actions.get(a["label"])
                 if b and (a["decision"] != b["decision"] or a["executed"] != b["executed"]):
-                    changed.append({"label": a["label"], "tool_id": a["tool_id"],
-                                    base: {"decision": b["decision"], "executed": b["executed"],
-                                           "event_id": b["decision_event_id"]},
-                                    other: {"decision": a["decision"], "executed": a["executed"],
-                                            "event_id": a["decision_event_id"]}})
+                    changed.append(
+                        {
+                            "label": a["label"],
+                            "tool_id": a["tool_id"],
+                            base: {
+                                "decision": b["decision"],
+                                "executed": b["executed"],
+                                "event_id": b["decision_event_id"],
+                            },
+                            other: {
+                                "decision": a["decision"],
+                                "executed": a["executed"],
+                                "event_id": a["decision_event_id"],
+                            },
+                        }
+                    )
             if changed or ref["status"] != run["status"]:
-                diffs.append({"scenario_id": run["scenario_id"], "baseline_policy": base, "compared_policy": other,
-                              "status": {base: ref["status"], other: run["status"]},
-                              "passed": {base: ref["passed"], other: run["passed"]},
-                              "execution_ids": {base: ref["execution_id"], other: run["execution_id"]},
-                              "changed_actions": changed})
+                diffs.append(
+                    {
+                        "scenario_id": run["scenario_id"],
+                        "baseline_policy": base,
+                        "compared_policy": other,
+                        "status": {base: ref["status"], other: run["status"]},
+                        "passed": {base: ref["passed"], other: run["passed"]},
+                        "execution_ids": {base: ref["execution_id"], other: run["execution_id"]},
+                        "changed_actions": changed,
+                    }
+                )
     return diffs
 
 
@@ -273,11 +370,16 @@ def run_evaluation(session: Session, settings: Settings, request: EvaluationCrea
     if len({(p, v) for p, v, _ in policies}) != len(policies):
         raise ValidationFailedError("each policy version may only be listed once")
     evaluation = Evaluation(
-        id=new_id("eval"), name=request.name, status="running",
-        request={**request.model_dump(mode="json"),
-                 "resolved_policies": [{"policy_id": p, "version": v, "content_hash": h} for p, v, h in policies],
-                 "resolved_scenarios": [{"scenario_id": s.scenario_id, "version": s.version,
-                                         "content_hash": s.content_hash} for s in scenarios]},
+        id=new_id("eval"),
+        name=request.name,
+        status="running",
+        request={
+            **request.model_dump(mode="json"),
+            "resolved_policies": [{"policy_id": p, "version": v, "content_hash": h} for p, v, h in policies],
+            "resolved_scenarios": [
+                {"scenario_id": s.scenario_id, "version": s.version, "content_hash": s.content_hash} for s in scenarios
+            ],
+        },
         results={},
     )
     session.add(evaluation)
@@ -287,15 +389,17 @@ def run_evaluation(session: Session, settings: Settings, request: EvaluationCrea
         per_policy: dict[str, list[dict[str, Any]]] = {}
         for policy_id, version, _ in policies:
             label = f"{policy_id}@v{version}"
-            per_policy[label] = [run_one(session, settings, s, policy_id, version, evaluation.id, decoy,
-                                         request.include_replay_check) for s in scenarios]
+            per_policy[label] = [
+                run_one(session, settings, s, policy_id, version, evaluation.id, decoy, request.include_replay_check)
+                for s in scenarios
+            ]
         evaluation.results = {
             "metrics": {label: aggregate(runs) for label, runs in per_policy.items()},
             "runs": per_policy,
             "differences": _explain_differences(per_policy),
             "methodology": "Synthetic, deterministic scenarios with known labels. Passing them shows the platform "
-                           "enforces the configured controls on these cases; it is not evidence of real-world "
-                           "agent security.",
+            "enforces the configured controls on these cases; it is not evidence of real-world "
+            "agent security.",
         }
         evaluation.status = "completed"
     except Exception as exc:

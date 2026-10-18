@@ -37,8 +37,9 @@ class PolicyVersionCreate(BaseModel):
 def create_policy(session: Session, payload: PolicyCreate, *, builtin: bool = False) -> Policy:
     if session.get(Policy, payload.id) is not None:
         raise ConflictError(f"policy '{payload.id}' already exists")
-    policy = Policy(id=payload.id, name=payload.name, description=payload.description,
-                    latest_version=1, builtin=builtin)
+    policy = Policy(
+        id=payload.id, name=payload.name, description=payload.description, latest_version=1, builtin=builtin
+    )
     session.add(policy)
     session.flush()
     _add_version(session, policy, 1, payload.document, payload.change_note)
@@ -67,8 +68,14 @@ def _hash(document: PolicyDocument) -> str:
 
 
 def _add_version(session: Session, policy: Policy, version: int, document: PolicyDocument, note: str) -> PolicyVersion:
-    row = PolicyVersion(id=new_id("polv"), policy_id=policy.id, version=version,
-                        document=document.model_dump(mode="json"), content_hash=_hash(document), change_note=note)
+    row = PolicyVersion(
+        id=new_id("polv"),
+        policy_id=policy.id,
+        version=version,
+        document=document.model_dump(mode="json"),
+        content_hash=_hash(document),
+        change_note=note,
+    )
     session.add(row)
     session.flush()
     return row
@@ -93,9 +100,16 @@ def seed_policies(session: Session, definitions: list[dict[str, Any]]) -> int:
     created = 0
     for d in definitions:
         if session.get(Policy, d["id"]) is None:
-            create_policy(session, PolicyCreate(
-                id=d["id"], name=d["name"], description=d["description"],
-                document=PolicyDocument.model_validate(d["document"]), change_note="Seeded built-in policy",
-            ), builtin=True)
+            create_policy(
+                session,
+                PolicyCreate(
+                    id=d["id"],
+                    name=d["name"],
+                    description=d["description"],
+                    document=PolicyDocument.model_validate(d["document"]),
+                    change_note="Seeded built-in policy",
+                ),
+                builtin=True,
+            )
             created += 1
     return created

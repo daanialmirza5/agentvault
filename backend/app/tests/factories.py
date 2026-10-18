@@ -16,16 +16,36 @@ def make_settings(**overrides: Any) -> Settings:
     return Settings(**base)
 
 
-def make_scenario(session: Session, scenario_id: str, steps: list[dict[str, Any]], *, agent_type: str = "scripted",
-                  environment: str = "sandbox", tags: list[str] | None = None, seed: int = 7,
-                  human: dict[str, Any] | None = None, expectations: dict[str, Any] | None = None,
-                  version: int = 1) -> str:
-    scenario = ScenarioFile.model_validate({
-        "id": scenario_id, "version": version, "name": scenario_id, "category": "test",
-        "spec": {"task": f"Test task for {scenario_id}", "environment": environment, "tags": tags or [],
-                 "seed": seed, "agent": {"type": agent_type, "steps": steps}},
-        "human_script": human or {}, "expectations": expectations or {},
-    })
+def make_scenario(
+    session: Session,
+    scenario_id: str,
+    steps: list[dict[str, Any]],
+    *,
+    agent_type: str = "scripted",
+    environment: str = "sandbox",
+    tags: list[str] | None = None,
+    seed: int = 7,
+    human: dict[str, Any] | None = None,
+    expectations: dict[str, Any] | None = None,
+    version: int = 1,
+) -> str:
+    scenario = ScenarioFile.model_validate(
+        {
+            "id": scenario_id,
+            "version": version,
+            "name": scenario_id,
+            "category": "test",
+            "spec": {
+                "task": f"Test task for {scenario_id}",
+                "environment": environment,
+                "tags": tags or [],
+                "seed": seed,
+                "agent": {"type": agent_type, "steps": steps},
+            },
+            "human_script": human or {},
+            "expectations": expectations or {},
+        }
+    )
     save_scenario(session, scenario, "test")
     session.commit()
     return scenario_id

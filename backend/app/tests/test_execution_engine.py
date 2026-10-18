@@ -67,7 +67,9 @@ def test_read_only_task_completes(seeded: Session, settings: Settings) -> None:
 def test_every_policy_evaluation_has_a_decision_record(seeded: Session, settings: Settings) -> None:
     make_scenario(seeded, "reads", READ_STEPS)
     execution = run(seeded, settings, "reads")
-    records = seeded.scalars(select(PolicyDecisionRecord).where(PolicyDecisionRecord.execution_id == execution.id)).all()
+    records = seeded.scalars(
+        select(PolicyDecisionRecord).where(PolicyDecisionRecord.execution_id == execution.id)
+    ).all()
     evaluated = [e for e in list_events(seeded, execution.id) if e.event_type == "policy.evaluated"]
     assert len(records) == len(evaluated) == 2
     assert {r.id for r in records} == {e.data["decision_id"] for e in evaluated}
@@ -86,21 +88,39 @@ def test_unknown_tool_is_denied_and_never_executed(seeded: Session, settings: Se
 
 
 def test_malformed_arguments_are_rejected(seeded: Session, settings: Settings) -> None:
-    make_scenario(seeded, "malformed", [
-        {"label": "bad", "tool_id": "email.draft", "arguments": {"to": "nobody", "subject": ""}, "on_blocked": "continue"},
-        {"label": "good", "tool_id": "calc.evaluate", "arguments": {"expression": "2+2"}},
-    ])
+    make_scenario(
+        seeded,
+        "malformed",
+        [
+            {
+                "label": "bad",
+                "tool_id": "email.draft",
+                "arguments": {"to": "nobody", "subject": ""},
+                "on_blocked": "continue",
+            },
+            {"label": "good", "tool_id": "calc.evaluate", "arguments": {"expression": "2+2"}},
+        ],
+    )
     execution = run(seeded, settings, "malformed")
     t = types(seeded, execution)
     assert "tool.arguments_rejected" in t
-    assert execution.status == "completed"     # agent chose to continue
+    assert execution.status == "completed"  # agent chose to continue
     assert execution.sandbox_state["drafts"] == []
     assert_audit_ok(seeded, execution)
 
 
 def test_approval_required_pauses_execution(seeded: Session, settings: Settings) -> None:
-    make_scenario(seeded, "send", [{"label": "send", "tool_id": "email.send",
-                                    "arguments": {"to": "ada@example.com", "subject": "Hi", "body": "Hello"}}])
+    make_scenario(
+        seeded,
+        "send",
+        [
+            {
+                "label": "send",
+                "tool_id": "email.send",
+                "arguments": {"to": "ada@example.com", "subject": "Hi", "body": "Hello"},
+            }
+        ],
+    )
     execution = run(seeded, settings, "send")
     assert execution.status == "waiting_for_approval"
     approval = seeded.scalars(select(Approval).where(Approval.execution_id == execution.id)).one()
@@ -114,8 +134,17 @@ def test_approval_required_pauses_execution(seeded: Session, settings: Settings)
 
 
 def test_cancel_while_waiting(seeded: Session, settings: Settings) -> None:
-    make_scenario(seeded, "send", [{"label": "send", "tool_id": "email.send",
-                                    "arguments": {"to": "ada@example.com", "subject": "Hi", "body": "Hello"}}])
+    make_scenario(
+        seeded,
+        "send",
+        [
+            {
+                "label": "send",
+                "tool_id": "email.send",
+                "arguments": {"to": "ada@example.com", "subject": "Hi", "body": "Hello"},
+            }
+        ],
+    )
     execution = run(seeded, settings, "send")
     cancel_execution(seeded, settings, execution, "operator cancelled")
     assert execution.status == "cancelled"
@@ -128,8 +157,11 @@ def test_cancel_while_waiting(seeded: Session, settings: Settings) -> None:
 
 
 def test_loop_detection_blocks_identical_calls(seeded: Session, settings: Settings) -> None:
-    make_scenario(seeded, "loop", [{"kind": "repeat", "label": "poll", "tool_id": "kb.search",
-                                    "arguments": {"query": "refund"}, "times": 50}])
+    make_scenario(
+        seeded,
+        "loop",
+        [{"kind": "repeat", "label": "poll", "tool_id": "kb.search", "arguments": {"query": "refund"}, "times": 50}],
+    )
     execution = run(seeded, settings, "loop")
     assert execution.status == "blocked" and "loop_detected" in execution.status_reason
     assert types(seeded, execution).count("tool.executed") == settings.max_identical_calls
@@ -155,8 +187,11 @@ def test_step_limit(seeded: Session) -> None:
 
 
 def test_tool_timeout_fails_execution(seeded: Session, settings: Settings) -> None:
-    make_scenario(seeded, "slow", [{"label": "report", "tool_id": "ops.generate_report",
-                                    "arguments": {"report": "daily", "delay_ms": 1200}}])
+    make_scenario(
+        seeded,
+        "slow",
+        [{"label": "report", "tool_id": "ops.generate_report", "arguments": {"report": "daily", "delay_ms": 1200}}],
+    )
     execution = run(seeded, settings, "slow")
     assert execution.status == "failed" and "timeout" in execution.status_reason
     failed = next(e for e in list_events(seeded, execution.id) if e.event_type == "tool.failed")
@@ -166,20 +201,38 @@ def test_tool_timeout_fails_execution(seeded: Session, settings: Settings) -> No
 
 
 def test_retries_are_bounded_and_deterministic(seeded: Session, settings: Settings) -> None:
-    make_scenario(seeded, "flaky", [{"label": "stock", "tool_id": "ops.check_inventory", "arguments": {"sku": "SKU-1"},
-                                     "max_retries": 3, "on_failure": "continue"}])
+    make_scenario(
+        seeded,
+        "flaky",
+        [
+            {
+                "label": "stock",
+                "tool_id": "ops.check_inventory",
+                "arguments": {"sku": "SKU-1"},
+                "max_retries": 3,
+                "on_failure": "continue",
+            }
+        ],
+    )
     first = run(seeded, settings, "flaky")
     second = run(seeded, settings, "flaky")
-    outcomes = [[e.outcome for e in list_events(seeded, x.id) if e.event_type == "tool.executed"] for x in (first, second)]
+    outcomes = [
+        [e.outcome for e in list_events(seeded, x.id) if e.event_type == "tool.executed"] for x in (first, second)
+    ]
     assert outcomes[0] == outcomes[1]
     assert 1 <= len(outcomes[0]) <= 4
 
 
 def test_untrusted_instruction_cannot_bypass_policy(seeded: Session, settings: Settings) -> None:
-    make_scenario(seeded, "inject", [
-        {"label": "read", "tool_id": "docs.read", "arguments": {"doc_id": "vendor-checklist"}},
-        {"kind": "follow_instructions", "label": "injected", "source": "read"},
-    ], agent_type="reactive")
+    make_scenario(
+        seeded,
+        "inject",
+        [
+            {"label": "read", "tool_id": "docs.read", "arguments": {"doc_id": "vendor-checklist"}},
+            {"kind": "follow_instructions", "label": "injected", "source": "read"},
+        ],
+        agent_type="reactive",
+    )
     execution = run(seeded, settings, "inject", policy="permissive-dev")
     events = list_events(seeded, execution.id)
     proposed = [e for e in events if e.event_type == "agent.action_proposed" and e.data["label"] == "injected"]
@@ -194,14 +247,33 @@ def test_untrusted_instruction_cannot_bypass_policy(seeded: Session, settings: S
 
 
 def test_branching_and_templates(seeded: Session, settings: Settings) -> None:
-    make_scenario(seeded, "branchy", [
-        {"label": "lookup", "tool_id": "crm.get_customer", "arguments": {"customer_id": "CUST-1001"}},
-        {"kind": "branch", "label": "tier", "condition": {"label": "lookup", "path": "output.tier", "op": "eq",
-                                                          "value": "enterprise"},
-         "then": [{"label": "draft", "tool_id": "email.draft",
-                   "arguments": {"to": "{{lookup.output.email}}", "subject": "Hello", "body": "Welcome"}}],
-         "otherwise": [{"label": "ticket", "tool_id": "ticket.create", "arguments": {"title": "Follow up", "priority": "p3"}}]},
-    ], agent_type="reactive")
+    make_scenario(
+        seeded,
+        "branchy",
+        [
+            {"label": "lookup", "tool_id": "crm.get_customer", "arguments": {"customer_id": "CUST-1001"}},
+            {
+                "kind": "branch",
+                "label": "tier",
+                "condition": {"label": "lookup", "path": "output.tier", "op": "eq", "value": "enterprise"},
+                "then": [
+                    {
+                        "label": "draft",
+                        "tool_id": "email.draft",
+                        "arguments": {"to": "{{lookup.output.email}}", "subject": "Hello", "body": "Welcome"},
+                    }
+                ],
+                "otherwise": [
+                    {
+                        "label": "ticket",
+                        "tool_id": "ticket.create",
+                        "arguments": {"title": "Follow up", "priority": "p3"},
+                    }
+                ],
+            },
+        ],
+        agent_type="reactive",
+    )
     execution = run(seeded, settings, "branchy")
     assert execution.status == "completed"
     assert execution.sandbox_state["drafts"][0]["to"] == "ada@example.com"
@@ -216,8 +288,11 @@ def test_same_seed_same_events(seeded: Session, settings: Settings) -> None:
 
 
 def test_executions_do_not_share_sandbox_state(seeded: Session, settings: Settings) -> None:
-    make_scenario(seeded, "draft", [{"label": "d", "tool_id": "email.draft",
-                                     "arguments": {"to": "a@example.com", "subject": "s", "body": "b"}}])
+    make_scenario(
+        seeded,
+        "draft",
+        [{"label": "d", "tool_id": "email.draft", "arguments": {"to": "a@example.com", "subject": "s", "body": "b"}}],
+    )
     a = run(seeded, settings, "draft")
     b = run(seeded, settings, "draft")
     assert len(a.sandbox_state["drafts"]) == len(b.sandbox_state["drafts"]) == 1
@@ -226,15 +301,20 @@ def test_executions_do_not_share_sandbox_state(seeded: Session, settings: Settin
 
 
 def test_production_environment_requires_approval_for_writes(seeded: Session, settings: Settings) -> None:
-    make_scenario(seeded, "ticket", [{"label": "t", "tool_id": "ticket.create",
-                                      "arguments": {"title": "Customer call", "priority": "p2"}}])
+    make_scenario(
+        seeded,
+        "ticket",
+        [{"label": "t", "tool_id": "ticket.create", "arguments": {"title": "Customer call", "priority": "p2"}}],
+    )
     assert run(seeded, settings, "ticket").status == "completed"
     assert run(seeded, settings, "ticket", environment="production").status == "waiting_for_approval"
 
 
 def test_parse_embedded_instruction() -> None:
     assert parse_embedded_instruction({"content": 'x AGENT-INSTRUCTION: {"tool_id": "a.b", "arguments": {}}'}) == {
-        "tool_id": "a.b", "arguments": {}}
+        "tool_id": "a.b",
+        "arguments": {},
+    }
     assert parse_embedded_instruction({"content": "AGENT-INSTRUCTION: not json"}) is None
     assert parse_embedded_instruction("nothing here") is None
 

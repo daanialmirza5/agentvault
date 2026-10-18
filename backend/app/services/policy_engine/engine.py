@@ -25,6 +25,7 @@ from app.services.policy_engine.model import (
     EFFECT_SEVERITY,
     ArgumentCondition,
     Decision,
+    Effect,
     MatchedRule,
     PolicyContext,
     PolicyDocument,
@@ -76,8 +77,8 @@ def condition_holds(condition: ArgumentCondition, arguments: dict[str, Any]) -> 
         return fnmatch.fnmatchcase(actual, expected)
     if isinstance(actual, bool) or not isinstance(actual, int | float):
         return False
-    return {"gt": actual > expected, "gte": actual >= expected,
-            "lt": actual < expected, "lte": actual <= expected}[op]
+    limit = float(expected)
+    return {"gt": actual > limit, "gte": actual >= limit, "lt": actual < limit, "lte": actual <= limit}[op]
 
 
 def tool_matches_patterns(tool_id: str, patterns: list[str]) -> bool:
@@ -112,27 +113,41 @@ def evaluate(
     argument_errors: list[str],
     context: PolicyContext,
 ) -> Decision:
-    def decide(outcome: str, reason: str, deciding: str, matched: list[MatchedRule], trace: list[str]) -> Decision:
-        return Decision(outcome=outcome, reason=reason, deciding_rule=deciding,  # type: ignore[arg-type]
-                        matched_rules=matched, policy_id=policy_id, policy_version=policy_version, trace=trace)
+    def decide(outcome: Effect, reason: str, deciding: str, matched: list[MatchedRule], trace: list[str]) -> Decision:
+        return Decision(
+            outcome=outcome,
+            reason=reason,
+            deciding_rule=deciding,
+            matched_rules=matched,
+            policy_id=policy_id,
+            policy_version=policy_version,
+            trace=trace,
+        )
 
     trace: list[str] = []
     if tool is None:
         trace.append(f"tool '{tool_id}' is not registered")
-        return decide("deny", f"Unknown tool '{tool_id}' is not in the registry allowlist.",
-                      "builtin:unknown_tool", [], trace)
+        return decide(
+            "deny", f"Unknown tool '{tool_id}' is not in the registry allowlist.", "builtin:unknown_tool", [], trace
+        )
     if argument_errors:
         trace.append("arguments failed schema validation")
-        return decide("deny", "Arguments failed schema validation: " + "; ".join(argument_errors[:3]),
-                      "builtin:invalid_arguments", [], trace)
+        return decide(
+            "deny",
+            "Arguments failed schema validation: " + "; ".join(argument_errors[:3]),
+            "builtin:invalid_arguments",
+            [],
+            trace,
+        )
 
     matched: list[MatchedRule] = []
     for rule in document.rules:
         if not rule.enabled:
             continue
         if rule_matches(rule, tool, arguments, context):
-            matched.append(MatchedRule(rule_id=rule.id, effect=rule.effect, priority=rule.priority,
-                                       description=rule.description))
+            matched.append(
+                MatchedRule(rule_id=rule.id, effect=rule.effect, priority=rule.priority, description=rule.description)
+            )
             trace.append(f"rule '{rule.id}' matched -> {rule.effect}")
 
     if matched:
@@ -149,7 +164,11 @@ def evaluate(
 
     if outcome == "allow" and tool.requires_approval:
         trace.append(f"tool '{tool.tool_id}' declares requires_approval; escalating allow -> require_approval")
-        return decide("require_approval",
-                      f"{reason} The tool itself requires human approval, which policy cannot waive.",
-                      "builtin:tool_requires_approval", matched, trace)
+        return decide(
+            "require_approval",
+            f"{reason} The tool itself requires human approval, which policy cannot waive.",
+            "builtin:tool_requires_approval",
+            matched,
+            trace,
+        )
     return decide(outcome, reason, deciding, matched, trace)

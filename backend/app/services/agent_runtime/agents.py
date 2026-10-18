@@ -109,7 +109,7 @@ def parse_embedded_instruction(output: Any) -> dict[str, Any] | None:
     if idx < 0:
         return None
     try:
-        payload, _ = json.JSONDecoder().raw_decode(text[idx + len(INSTRUCTION_MARKER):].lstrip())
+        payload, _ = json.JSONDecoder().raw_decode(text[idx + len(INSTRUCTION_MARKER) :].lstrip())
     except ValueError:
         return None
     if not isinstance(payload, dict) or not isinstance(payload.get("tool_id"), str):
@@ -128,8 +128,12 @@ class ScriptAgent:
         self.agent_type: str = spec.type
 
     def initial_state(self) -> dict[str, Any]:
-        return {"queue": [s.model_dump(mode="json") for s in self.spec.steps], "observations": [],
-                "attempts": {}, "current": None}
+        return {
+            "queue": [s.model_dump(mode="json") for s in self.spec.steps],
+            "observations": [],
+            "attempts": {},
+            "current": None,
+        }
 
     def decide(self, state: dict[str, Any], ctx: AgentContext) -> tuple[Action, dict[str, Any]]:
         state = copy.deepcopy(state)
@@ -149,12 +153,18 @@ class ScriptAgent:
                 continue
             if step.kind == "follow_instructions":
                 assert step.source is not None
-                obs = latest_observation(state, step.source)
-                payload = parse_embedded_instruction(obs.get("output")) if obs and obs["status"] == "executed" else None
+                source_obs = latest_observation(state, step.source)
+                payload = (
+                    parse_embedded_instruction(source_obs.get("output"))
+                    if source_obs and source_obs["status"] == "executed"
+                    else None
+                )
                 if payload is None:
                     continue
                 action = ToolCallAction(
-                    label=step.label, tool_id=payload["tool_id"], arguments=payload.get("arguments", {}),
+                    label=step.label,
+                    tool_id=payload["tool_id"],
+                    arguments=payload.get("arguments", {}),
                     rationale=f"Following an instruction found in the output of '{step.source}'.",
                     claims=payload.get("claims", {}) if isinstance(payload.get("claims"), dict) else {},
                 )
@@ -165,9 +175,13 @@ class ScriptAgent:
                 queue.insert(0, again.model_dump(mode="json"))
             assert step.tool_id is not None
             state["current"] = step.model_dump(mode="json")
-            return ToolCallAction(label=step.label, tool_id=step.tool_id,
-                                  arguments=render_arguments(copy.deepcopy(step.arguments), state),
-                                  rationale=step.rationale, claims=dict(step.claims)), state
+            return ToolCallAction(
+                label=step.label,
+                tool_id=step.tool_id,
+                arguments=render_arguments(copy.deepcopy(step.arguments), state),
+                rationale=step.rationale,
+                claims=dict(step.claims),
+            ), state
         return FinishAction("All planned steps finished."), state
 
     def observe(self, state: dict[str, Any], observation: dict[str, Any]) -> tuple[dict[str, Any], bool]:

@@ -92,12 +92,20 @@ def _crm_update_record(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]
     old = customer.get(args["field"])
     customer[args["field"]] = args["value"]
     ctx.sandbox["record_changes"].append({**args, "old_value": old})
-    return {"customer_id": args["customer_id"], "field": args["field"], "old_value": str(old), "new_value": args["value"]}
+    return {
+        "customer_id": args["customer_id"],
+        "field": args["field"],
+        "old_value": str(old),
+        "new_value": args["value"],
+    }
 
 
 _BIN_OPS: dict[type[ast.operator], Callable[[float, float], float]] = {
-    ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
-    ast.Div: operator.truediv, ast.Mod: operator.mod,
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.Mod: operator.mod,
 }
 
 

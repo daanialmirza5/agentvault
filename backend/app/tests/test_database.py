@@ -15,9 +15,21 @@ from app.models.audit import AppendOnlyViolation
 
 def _execution(session: Session) -> Execution:
     execution = Execution(
-        id=new_id("exe"), scenario_id="s", scenario_version=1, policy_id="p", policy_version=1,
-        agent_type="scripted", environment="sandbox", seed=1, status="pending", task="t", spec={},
-        agent_state={}, sandbox_state={}, initial_sandbox_hash="x", last_event_hash=GENESIS_HASH,
+        id=new_id("exe"),
+        scenario_id="s",
+        scenario_version=1,
+        policy_id="p",
+        policy_version=1,
+        agent_type="scripted",
+        environment="sandbox",
+        seed=1,
+        status="pending",
+        task="t",
+        spec={},
+        agent_state={},
+        sandbox_state={},
+        initial_sandbox_hash="x",
+        last_event_hash=GENESIS_HASH,
     )
     session.add(execution)
     session.flush()
@@ -26,8 +38,15 @@ def _execution(session: Session) -> Execution:
 
 def _event(execution_id: str, seq: int) -> AuditEvent:
     return AuditEvent(
-        id=new_id("evt"), execution_id=execution_id, sequence=seq, event_type="execution.created",
-        outcome="ok", data={}, timestamp=datetime.now(UTC), prev_hash=GENESIS_HASH, hash="h" * 64,
+        id=new_id("evt"),
+        execution_id=execution_id,
+        sequence=seq,
+        event_type="execution.created",
+        outcome="ok",
+        data={},
+        timestamp=datetime.now(UTC),
+        prev_hash=GENESIS_HASH,
+        hash="h" * 64,
     )
 
 

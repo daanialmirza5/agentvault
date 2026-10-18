@@ -30,8 +30,9 @@ class StepCondition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     label: str = Field(pattern=LABEL, description="Label of an earlier step.")
-    path: str = Field(default="status", max_length=200,
-                      description="`status` or `output.<field>` of that step's latest observation.")
+    path: str = Field(
+        default="status", max_length=200, description="`status` or `output.<field>` of that step's latest observation."
+    )
     op: ConditionOp = "eq"
     value: Any = None
 
@@ -44,8 +45,9 @@ class StepSpec(BaseModel):
     tool_id: str | None = Field(default=None, max_length=80)
     arguments: Any = None
     rationale: str = Field(default="", max_length=500)
-    claims: dict[str, Any] = Field(default_factory=dict,
-                                   description="Assertions the agent makes (e.g. 'safe'). Recorded, never trusted.")
+    claims: dict[str, Any] = Field(
+        default_factory=dict, description="Assertions the agent makes (e.g. 'safe'). Recorded, never trusted."
+    )
     times: int = Field(default=1, ge=1, le=1000)
     source: str | None = Field(default=None, pattern=LABEL)
     condition: StepCondition | None = None
@@ -164,19 +166,29 @@ def scenario_hash(s: ScenarioFile) -> str:
 
 
 def save_scenario(session: Session, scenario: ScenarioFile, source: str) -> Scenario:
-    existing = session.scalar(select(Scenario).where(Scenario.scenario_id == scenario.id,
-                                                     Scenario.version == scenario.version))
+    existing = session.scalar(
+        select(Scenario).where(Scenario.scenario_id == scenario.id, Scenario.version == scenario.version)
+    )
     digest = scenario_hash(scenario)
     if existing is not None:
         if existing.content_hash != digest:
-            raise ConflictError(f"scenario {scenario.id} v{scenario.version} exists with different content; "
-                                "bump the version", code="scenario_version_conflict")
+            raise ConflictError(
+                f"scenario {scenario.id} v{scenario.version} exists with different content; bump the version",
+                code="scenario_version_conflict",
+            )
         return existing
     row = Scenario(
-        id=new_id("scn"), scenario_id=scenario.id, version=scenario.version, name=scenario.name,
-        category=scenario.category, description=scenario.description, source=source,
-        spec=scenario.spec.model_dump(mode="json"), human_script=scenario.human_script.model_dump(mode="json"),
-        expectations=scenario.expectations.model_dump(mode="json"), content_hash=digest,
+        id=new_id("scn"),
+        scenario_id=scenario.id,
+        version=scenario.version,
+        name=scenario.name,
+        category=scenario.category,
+        description=scenario.description,
+        source=source,
+        spec=scenario.spec.model_dump(mode="json"),
+        human_script=scenario.human_script.model_dump(mode="json"),
+        expectations=scenario.expectations.model_dump(mode="json"),
+        content_hash=digest,
     )
     session.add(row)
     session.flush()

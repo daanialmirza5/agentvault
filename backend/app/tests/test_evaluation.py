@@ -16,8 +16,17 @@ from app.tests.factories import make_settings
 
 SCENARIOS = REPO_DIR / "scenarios"
 REQUIRED_CATEGORIES = {
-    "normal_read_only", "legitimate_approval", "unauthorized_tool", "protected_resource", "malformed_arguments",
-    "execution_loop", "tool_failure", "policy_conflict", "stale_approval", "approval_replay", "untrusted_content",
+    "normal_read_only",
+    "legitimate_approval",
+    "unauthorized_tool",
+    "protected_resource",
+    "malformed_arguments",
+    "execution_loop",
+    "tool_failure",
+    "policy_conflict",
+    "stale_approval",
+    "approval_replay",
+    "untrusted_content",
     "over_restriction_probe",
 }
 
@@ -89,9 +98,16 @@ def test_approval_attacks_are_refused(seeded: Session, settings: Settings) -> No
 
 def test_evaluations_are_reproducible(seeded: Session, settings: Settings) -> None:
     def fingerprint(results: dict[str, Any]) -> list[Any]:
-        return [(r["scenario_id"], r["status"], r["passed"], [(a["label"], a["decision"], a["executed"])
-                                                               for a in r["actions"]])
-                for r in results["runs"]["baseline@v1"]]
+        return [
+            (
+                r["scenario_id"],
+                r["status"],
+                r["passed"],
+                [(a["label"], a["decision"], a["executed"]) for a in r["actions"]],
+            )
+            for r in results["runs"]["baseline@v1"]
+        ]
+
     assert fingerprint(evaluate(seeded, settings, "baseline")) == fingerprint(evaluate(seeded, settings, "baseline"))
 
 
@@ -100,15 +116,21 @@ def test_expectations_never_influence_decisions(seeded: Session, settings: Setti
     before = evaluate(seeded, settings, "baseline", include_replay_check=False)
     for row in seeded.scalars(select(Scenario)).all():
         flipped = dict(row.expectations)
-        flipped["actions"] = {k: {**v, "safety": "legitimate" if v["safety"] == "unsafe" else "unsafe"}
-                              for k, v in row.expectations.get("actions", {}).items()}
+        flipped["actions"] = {
+            k: {**v, "safety": "legitimate" if v["safety"] == "unsafe" else "unsafe"}
+            for k, v in row.expectations.get("actions", {}).items()
+        }
         row.expectations = flipped
     seeded.commit()
     after = evaluate(seeded, settings, "baseline", include_replay_check=False)
-    decisions = lambda res: [[(a["label"], a["decision"], a["executed"]) for a in r["actions"]]  # noqa: E731
-                             for r in res["runs"]["baseline@v1"]]
+
+    def decisions(res):
+        return [[(a["label"], a["decision"], a["executed"]) for a in r["actions"]] for r in res["runs"]["baseline@v1"]]
+
     assert decisions(before) == decisions(after)
-    assert before["metrics"]["baseline@v1"]["scenario_pass_rate"] != after["metrics"]["baseline@v1"]["scenario_pass_rate"]
+    assert (
+        before["metrics"]["baseline@v1"]["scenario_pass_rate"] != after["metrics"]["baseline@v1"]["scenario_pass_rate"]
+    )
 
 
 def test_metric_helpers() -> None:
@@ -120,6 +142,10 @@ def test_metric_helpers() -> None:
 
 def test_duplicate_policy_rejected(seeded: Session, settings: Settings) -> None:
     from app.core.errors import ValidationFailedError
+
     with pytest.raises(ValidationFailedError):
-        run_evaluation(seeded, settings, EvaluationCreate(policies=[PolicyRef(policy_id="baseline"),
-                                                                    PolicyRef(policy_id="baseline", version=1)]))
+        run_evaluation(
+            seeded,
+            settings,
+            EvaluationCreate(policies=[PolicyRef(policy_id="baseline"), PolicyRef(policy_id="baseline", version=1)]),
+        )

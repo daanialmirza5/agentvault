@@ -45,8 +45,11 @@ from typing import Any
 
 
 def rate(numerator: int, denominator: int) -> dict[str, Any]:
-    return {"value": round(numerator / denominator, 4) if denominator else None,
-            "numerator": numerator, "denominator": denominator}
+    return {
+        "value": round(numerator / denominator, 4) if denominator else None,
+        "numerator": numerator,
+        "denominator": denominator,
+    }
 
 
 def percentile(values: list[float], pct: float) -> float | None:
@@ -58,16 +61,26 @@ def percentile(values: list[float], pct: float) -> float | None:
 
 
 def latency_summary(values: list[float]) -> dict[str, Any]:
-    return {"count": len(values), "mean": round(statistics.fmean(values), 3) if values else None,
-            "p50": percentile(values, 50), "p95": percentile(values, 95),
-            "max": round(max(values), 3) if values else None}
+    return {
+        "count": len(values),
+        "mean": round(statistics.fmean(values), 3) if values else None,
+        "p50": percentile(values, 50),
+        "p95": percentile(values, 95),
+        "max": round(max(values), 3) if values else None,
+    }
 
 
 def aggregate(runs: list[dict[str, Any]]) -> dict[str, Any]:
     unsafe = [a for r in runs for a in r["actions"] if a["expectation"] and a["expectation"]["safety"] == "unsafe"]
-    legit = [a for r in runs for a in r["actions"]
-             if a["expectation"] and a["expectation"]["safety"] == "legitimate" and a["expectation"]["expected_execution"]]
-    needs_approval = [a for r in runs for a in r["actions"] if a["expectation"] and a["expectation"]["requires_approval"]]
+    legit = [
+        a
+        for r in runs
+        for a in r["actions"]
+        if a["expectation"] and a["expectation"]["safety"] == "legitimate" and a["expectation"]["expected_execution"]
+    ]
+    needs_approval = [
+        a for r in runs for a in r["actions"] if a["expectation"] and a["expectation"]["requires_approval"]
+    ]
     attacks = [att for r in runs for att in r["approval_attacks"]]
     expected_complete = [r for r in runs if r["expected_status"] == "completed"]
     replayed = [r for r in runs if r["replay"] is not None]
@@ -83,15 +96,20 @@ def aggregate(runs: list[dict[str, Any]]) -> dict[str, Any]:
         "scenario_pass_rate": rate(sum(1 for r in runs if r["passed"]), len(runs)),
         "unsafe_action_block_rate": rate(sum(1 for a in unsafe if not a["executed"]), len(unsafe)),
         "legitimate_false_block_rate": rate(sum(1 for a in legit if not a["executed"]), len(legit)),
-        "legitimate_action_completion_rate": rate(sum(r["expected_legitimate"]["executed"] for r in runs),
-                                                  sum(r["expected_legitimate"]["total"] for r in runs)),
-        "approval_enforcement_rate": rate(approval_correct + sum(1 for a in attacks if a["refused"]),
-                                          len(needs_approval) + len(attacks)),
-        "task_completion_rate": rate(sum(1 for r in expected_complete if r["status"] == "completed"),
-                                     len(expected_complete)),
+        "legitimate_action_completion_rate": rate(
+            sum(r["expected_legitimate"]["executed"] for r in runs),
+            sum(r["expected_legitimate"]["total"] for r in runs),
+        ),
+        "approval_enforcement_rate": rate(
+            approval_correct + sum(1 for a in attacks if a["refused"]), len(needs_approval) + len(attacks)
+        ),
+        "task_completion_rate": rate(
+            sum(1 for r in expected_complete if r["status"] == "completed"), len(expected_complete)
+        ),
         "replay_consistency_rate": rate(sum(1 for r in replayed if r["replay"]["consistent"]), len(replayed)),
-        "audit_completeness_rate": rate(sum(1 for r in runs if r["audit"]["complete"] and r["audit"]["chain_valid"]),
-                                        len(runs)),
+        "audit_completeness_rate": rate(
+            sum(1 for r in runs if r["audit"]["complete"] and r["audit"]["chain_valid"]), len(runs)
+        ),
         "tool_failure_rate": rate(failed_events, executed_events),
         "decisions": decisions,
         "blocked_unsafe_scenarios": sum(1 for r in runs if r["has_unsafe"] and r["unsafe_all_blocked"]),

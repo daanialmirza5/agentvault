@@ -46,29 +46,46 @@ def _covers(broad: list[str] | None, narrow: list[str] | None) -> bool:
 def validate_policy(document: PolicyDocument, tools: list[ToolSpec]) -> list[PolicyIssue]:
     issues: list[PolicyIssue] = []
     if document.default_effect == "allow":
-        issues.append(PolicyIssue(
-            severity="warning", code="default_allow",
-            message="The default effect is 'allow': any tool not covered by a rule is permitted "
-                    "(tools that declare requires_approval still need approval).",
-        ))
+        issues.append(
+            PolicyIssue(
+                severity="warning",
+                code="default_allow",
+                message="The default effect is 'allow': any tool not covered by a rule is permitted "
+                "(tools that declare requires_approval still need approval).",
+            )
+        )
     rules = [r for r in document.rules if r.enabled]
     reach = {r.id: _tools_for(r, tools) for r in rules}
     for rule in rules:
         if not reach[rule.id]:
-            issues.append(PolicyIssue(severity="warning", code="matches_no_tool", rule_ids=[rule.id],
-                                      message=f"Rule '{rule.id}' cannot match any registered tool."))
+            issues.append(
+                PolicyIssue(
+                    severity="warning",
+                    code="matches_no_tool",
+                    rule_ids=[rule.id],
+                    message=f"Rule '{rule.id}' cannot match any registered tool.",
+                )
+            )
         if rule.match == type(rule.match)():
-            issues.append(PolicyIssue(severity="info", code="matches_everything", rule_ids=[rule.id],
-                                      message=f"Rule '{rule.id}' has no conditions and matches every request."))
+            issues.append(
+                PolicyIssue(
+                    severity="info",
+                    code="matches_everything",
+                    rule_ids=[rule.id],
+                    message=f"Rule '{rule.id}' has no conditions and matches every request.",
+                )
+            )
     for i, a in enumerate(rules):
-        for b in rules[i + 1:]:
+        for b in rules[i + 1 :]:
             if a.effect == b.effect:
                 continue
             shared = reach[a.id] & reach[b.id]
             if not shared:
                 continue
-            if not (_sets_overlap(a.match.environments, b.match.environments)
-                    and _sets_overlap(a.match.scenario_tags, b.match.scenario_tags)):
+            if not (
+                _sets_overlap(a.match.environments, b.match.environments)
+                and _sets_overlap(a.match.scenario_tags, b.match.scenario_tags)
+            ):
                 continue
             strict, loose = (a, b) if EFFECT_SEVERITY[a.effect] > EFFECT_SEVERITY[b.effect] else (b, a)
             shadowed = (
@@ -78,17 +95,25 @@ def validate_policy(document: PolicyDocument, tools: list[ToolSpec]) -> list[Pol
                 and _covers(strict.match.scenario_tags, loose.match.scenario_tags)
             )
             if shadowed:
-                issues.append(PolicyIssue(
-                    severity="warning", code="shadowed_rule", rule_ids=[loose.id, strict.id],
-                    message=f"Rule '{loose.id}' ({loose.effect}) never takes effect: '{strict.id}' "
-                            f"({strict.effect}) matches every request it matches.",
-                ))
+                issues.append(
+                    PolicyIssue(
+                        severity="warning",
+                        code="shadowed_rule",
+                        rule_ids=[loose.id, strict.id],
+                        message=f"Rule '{loose.id}' ({loose.effect}) never takes effect: '{strict.id}' "
+                        f"({strict.effect}) matches every request it matches.",
+                    )
+                )
             else:
-                issues.append(PolicyIssue(
-                    severity="info", code="overlapping_rules", rule_ids=[strict.id, loose.id],
-                    message=f"Rules '{strict.id}' ({strict.effect}) and '{loose.id}' ({loose.effect}) can both "
-                            f"match {', '.join(sorted(shared)[:4])}; '{strict.effect}' wins (deny-overrides).",
-                ))
+                issues.append(
+                    PolicyIssue(
+                        severity="info",
+                        code="overlapping_rules",
+                        rule_ids=[strict.id, loose.id],
+                        message=f"Rules '{strict.id}' ({strict.effect}) and '{loose.id}' ({loose.effect}) can both "
+                        f"match {', '.join(sorted(shared)[:4])}; '{strict.effect}' wins (deny-overrides).",
+                    )
+                )
     return issues
 
 
@@ -102,8 +127,11 @@ def diff_documents(left: PolicyDocument, right: PolicyDocument) -> dict[str, Any
             fields = sorted(k for k in before if before[k] != after[k])
             changed.append({"rule_id": rid, "fields": fields, "before": before, "after": after})
     return {
-        "default_effect": {"before": left.default_effect, "after": right.default_effect,
-                           "changed": left.default_effect != right.default_effect},
+        "default_effect": {
+            "before": left.default_effect,
+            "after": right.default_effect,
+            "changed": left.default_effect != right.default_effect,
+        },
         "added": [rrules[r].model_dump() for r in sorted(set(rrules) - set(lrules))],
         "removed": [lrules[r].model_dump() for r in sorted(set(lrules) - set(rrules))],
         "changed": changed,
@@ -123,8 +151,16 @@ def decision_matrix(
     for tool in tools:
         row: dict[str, Any] = {"tool_id": tool.tool_id, "risk_level": tool.risk_level, "outcomes": {}}
         for pid, version, doc in policies:
-            decision = evaluate(doc, policy_id=pid, policy_version=version, tool_id=tool.tool_id, tool=tool,
-                                arguments={}, argument_errors=[], context=ctx)
+            decision = evaluate(
+                doc,
+                policy_id=pid,
+                policy_version=version,
+                tool_id=tool.tool_id,
+                tool=tool,
+                arguments={},
+                argument_errors=[],
+                context=ctx,
+            )
             row["outcomes"][f"{pid}@v{version}"] = {"outcome": decision.outcome, "rule": decision.deciding_rule}
         rows.append(row)
     return rows

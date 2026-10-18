@@ -52,7 +52,9 @@ def check_completeness(events: Sequence[EventLike], status: str) -> dict[str, An
             if s["decision"] == "allow":
                 pass
             elif s["decision"] == "require_approval":
-                if EventType.APPROVAL_GRANTED not in t or t.index(EventType.APPROVAL_GRANTED) > t.index(EventType.TOOL_EXECUTED):
+                if EventType.APPROVAL_GRANTED not in t or t.index(EventType.APPROVAL_GRANTED) > t.index(
+                    EventType.TOOL_EXECUTED
+                ):
                     problems.append(f"step {step}: executed without a prior approval.granted")
             else:
                 problems.append(f"step {step}: executed although the policy decision was '{s['decision']}'")
@@ -60,8 +62,9 @@ def check_completeness(events: Sequence[EventLike], status: str) -> dict[str, An
                 if bad in t:
                     problems.append(f"step {step}: executed despite {bad}")
         if EventType.APPROVAL_REQUESTED in t:
-            resolved = any(x in t for x in (EventType.APPROVAL_GRANTED, EventType.APPROVAL_REJECTED,
-                                            EventType.APPROVAL_EXPIRED))
+            resolved = any(
+                x in t for x in (EventType.APPROVAL_GRANTED, EventType.APPROVAL_REJECTED, EventType.APPROVAL_EXPIRED)
+            )
             if not resolved and status not in {"waiting_for_approval", "cancelled"}:
                 problems.append(f"step {step}: approval requested but never resolved")
 

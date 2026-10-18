@@ -57,8 +57,15 @@ def event_key(e: EventView) -> tuple[Any, ...]:
 def summarize(e: EventView | None) -> dict[str, Any] | None:
     if e is None:
         return None
-    return {"sequence": e.sequence, "event_type": e.event_type, "tool_id": e.tool_id, "outcome": e.outcome,
-            "label": e.data.get("label"), "step": e.data.get("step"), "event_id": getattr(e, "id", None)}
+    return {
+        "sequence": e.sequence,
+        "event_type": e.event_type,
+        "tool_id": e.tool_id,
+        "outcome": e.outcome,
+        "label": e.data.get("label"),
+        "step": e.data.get("step"),
+        "event_id": getattr(e, "id", None),
+    }
 
 
 def first_divergence(left_all: Sequence[EventView], right_all: Sequence[EventView]) -> dict[str, Any]:
@@ -67,26 +74,48 @@ def first_divergence(left_all: Sequence[EventView], right_all: Sequence[EventVie
     for index, (a, b) in enumerate(zip(left, right, strict=False)):
         ka, kb = event_key(a), event_key(b)
         if ka != kb:
-            return {"diverged": True, "index": index, "left": summarize(a), "right": summarize(b),
-                    "explanation": _explain(a, b), "left_count": len(left), "right_count": len(right)}
+            return {
+                "diverged": True,
+                "index": index,
+                "left": summarize(a),
+                "right": summarize(b),
+                "explanation": _explain(a, b),
+                "left_count": len(left),
+                "right_count": len(right),
+            }
     if len(left) != len(right):
         index = min(len(left), len(right))
-        a = left[index] if index < len(left) else None
-        b = right[index] if index < len(right) else None
-        return {"diverged": True, "index": index, "left": summarize(a), "right": summarize(b),
-                "explanation": "One run ended earlier: the streams agree up to this point and then one has "
-                               "no further events.", "left_count": len(left), "right_count": len(right)}
-    return {"diverged": False, "index": None, "left": None, "right": None,
-            "explanation": "The event streams are semantically identical.",
-            "left_count": len(left), "right_count": len(right)}
+        tail_left = left[index] if index < len(left) else None
+        tail_right = right[index] if index < len(right) else None
+        return {
+            "diverged": True,
+            "index": index,
+            "left": summarize(tail_left),
+            "right": summarize(tail_right),
+            "explanation": "One run ended earlier: the streams agree up to this point and then one has "
+            "no further events.",
+            "left_count": len(left),
+            "right_count": len(right),
+        }
+    return {
+        "diverged": False,
+        "index": None,
+        "left": None,
+        "right": None,
+        "explanation": "The event streams are semantically identical.",
+        "left_count": len(left),
+        "right_count": len(right),
+    }
 
 
 def _explain(a: EventView, b: EventView) -> str:
     if a.event_type != b.event_type:
         return f"Different event types: '{a.event_type}' vs '{b.event_type}'."
     if a.event_type == "policy.evaluated":
-        return (f"Policy decided '{a.outcome}' (rule {a.data.get('deciding_rule')}) vs "
-                f"'{b.outcome}' (rule {b.data.get('deciding_rule')}) for '{a.data.get('label')}'.")
+        return (
+            f"Policy decided '{a.outcome}' (rule {a.data.get('deciding_rule')}) vs "
+            f"'{b.outcome}' (rule {b.data.get('deciding_rule')}) for '{a.data.get('label')}'."
+        )
     if a.event_type == "tool.result":
         return f"Tool '{a.tool_id}' returned different output for '{a.data.get('label')}'."
     if a.event_type in {"agent.action_proposed", "tool.requested"}:
@@ -102,10 +131,18 @@ def tool_call_table(events: Sequence[EventView]) -> list[dict[str, Any]]:
         if not isinstance(step, int):
             continue
         if e.event_type == "tool.requested":
-            rows[step] = {"step": step, "label": e.data.get("label"), "tool_id": e.tool_id,
-                          "action_fingerprint": e.data.get("action_fingerprint"), "decision": None,
-                          "deciding_rule": None, "approval": None, "status": "not_executed", "output_hash": None,
-                          "source": None}
+            rows[step] = {
+                "step": step,
+                "label": e.data.get("label"),
+                "tool_id": e.tool_id,
+                "action_fingerprint": e.data.get("action_fingerprint"),
+                "decision": None,
+                "deciding_rule": None,
+                "approval": None,
+                "status": "not_executed",
+                "output_hash": None,
+                "source": None,
+            }
         row = rows.get(step)
         if row is None:
             continue

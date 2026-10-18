@@ -36,7 +36,9 @@ def tool_rng(seed: int, step: int, tool_id: str) -> random.Random:
     return random.Random(f"{seed}:{step}:{tool_id}")
 
 
-def run_tool(spec: ToolSpec, arguments: dict[str, Any], sandbox: dict[str, Any], *, seed: int, step: int) -> ToolRunResult:
+def run_tool(
+    spec: ToolSpec, arguments: dict[str, Any], sandbox: dict[str, Any], *, seed: int, step: int
+) -> ToolRunResult:
     impl = IMPLEMENTATIONS.get(spec.implementation)
     if impl is None:
         return ToolRunResult(status="failed", error=f"no implementation '{spec.implementation}'", sandbox=sandbox)
@@ -47,17 +49,29 @@ def run_tool(spec: ToolSpec, arguments: dict[str, Any], sandbox: dict[str, Any],
     try:
         output = future.result(timeout=spec.timeout_seconds)
     except FutureTimeout:
-        return ToolRunResult(status="timeout", error=f"tool exceeded its {spec.timeout_seconds}s timeout",
-                             duration_ms=_ms(started), sandbox=sandbox)
+        return ToolRunResult(
+            status="timeout",
+            error=f"tool exceeded its {spec.timeout_seconds}s timeout",
+            duration_ms=_ms(started),
+            sandbox=sandbox,
+        )
     except ToolError as exc:
         return ToolRunResult(status="failed", error=str(exc)[:500], duration_ms=_ms(started), sandbox=sandbox)
     except Exception as exc:  # a bug in a mock must never crash the engine
-        return ToolRunResult(status="failed", error=f"internal tool error: {type(exc).__name__}",
-                             duration_ms=_ms(started), sandbox=sandbox)
+        return ToolRunResult(
+            status="failed",
+            error=f"internal tool error: {type(exc).__name__}",
+            duration_ms=_ms(started),
+            sandbox=sandbox,
+        )
     problems = validate_against(spec.output_schema, output)
     if problems:
-        return ToolRunResult(status="failed", error="output failed schema validation: " + "; ".join(problems),
-                             duration_ms=_ms(started), sandbox=sandbox)
+        return ToolRunResult(
+            status="failed",
+            error="output failed schema validation: " + "; ".join(problems),
+            duration_ms=_ms(started),
+            sandbox=sandbox,
+        )
     return ToolRunResult(status="succeeded", output=output, duration_ms=_ms(started), sandbox=working)
 
 

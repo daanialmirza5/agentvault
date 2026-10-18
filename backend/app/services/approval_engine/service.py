@@ -47,9 +47,10 @@ Verdict = Literal["approve", "reject"]
 _TARGET = {"approve": "approved", "reject": "rejected"}
 
 
-def list_approvals(session: Session, *, status: str | None, execution_id: str | None,
-                   limit: int, offset: int) -> tuple[list[Approval], int]:
-    query: Select[tuple[Approval]] = select(Approval)
+def list_approvals(
+    session: Session, *, status: str | None, execution_id: str | None, limit: int, offset: int
+) -> tuple[list[Approval], int]:
+    query: Select[Approval] = select(Approval)
     if status:
         query = query.where(Approval.status == status)
     if execution_id:
@@ -62,8 +63,11 @@ def list_approvals(session: Session, *, status: str | None, execution_id: str | 
 def _claim_execution(session: Session, approval: Approval) -> Execution:
     claimed = session.execute(
         update(Execution)
-        .where(Execution.id == approval.execution_id, Execution.status == "waiting_for_approval",
-               Execution.pending_approval_id == approval.id)
+        .where(
+            Execution.id == approval.execution_id,
+            Execution.status == "waiting_for_approval",
+            Execution.pending_approval_id == approval.id,
+        )
         .values(status="running")
     ).rowcount  # type: ignore[attr-defined]
     if claimed != 1:
@@ -73,10 +77,10 @@ def _claim_execution(session: Session, approval: Approval) -> Execution:
     return execution
 
 
-def _transition(session: Session, approval: Approval, status: str, *, by: str | None, note: str,
-                now: datetime) -> None:
+def _transition(session: Session, approval: Approval, status: str, *, by: str | None, note: str, now: datetime) -> None:
     changed = session.execute(
-        update(Approval).where(Approval.id == approval.id, Approval.status == "pending")
+        update(Approval)
+        .where(Approval.id == approval.id, Approval.status == "pending")
         .values(status=status, decided_at=now, decided_by=by, decision_note=note)
     ).rowcount  # type: ignore[attr-defined]
     if changed != 1:
@@ -87,13 +91,21 @@ def _expire_locked(session: Session, settings: Settings, approval: Approval, now
     _transition(session, approval, "expired", by="system", note="expired before a decision", now=now)
     execution = _claim_execution(session, approval)
     session.commit()
-    return resume_execution(session, settings, execution,
-                            Resolution(outcome="expired", approval_id=approval.id, decided_by="system"))
+    return resume_execution(
+        session, settings, execution, Resolution(outcome="expired", approval_id=approval.id, decided_by="system")
+    )
 
 
-def decide(session: Session, settings: Settings, approval_id: str, verdict: Verdict,
-           request: ApprovalDecisionRequest, *, operator: str, now: datetime | None = None
-           ) -> tuple[Approval, Execution, bool]:
+def decide(
+    session: Session,
+    settings: Settings,
+    approval_id: str,
+    verdict: Verdict,
+    request: ApprovalDecisionRequest,
+    *,
+    operator: str,
+    now: datetime | None = None,
+) -> tuple[Approval, Execution, bool]:
     """Apply a human decision. Returns (approval, execution, idempotent_repeat)."""
     now = now or utcnow()
     target = _TARGET[verdict]
@@ -107,18 +119,29 @@ def decide(session: Session, settings: Settings, approval_id: str, verdict: Verd
         if request.execution_id != approval.execution_id or request.action_hash != approval.action_hash:
             if approval.status == "pending":
                 # Safe to append: a waiting execution has no other writer.
-                append_event(session, execution, EventRecord(
-                    event_type=EventType.APPROVAL_BINDING_MISMATCH, outcome="refused", tool_id=approval.tool_id,
-                    policy_version=f"{execution.policy_id}@v{execution.policy_version}",
-                    data={"step": approval.step, "approval_id": approval.id, "attempted_verdict": verdict,
-                          "presented_execution_id": request.execution_id[:40],
-                          "execution_matches": request.execution_id == approval.execution_id,
-                          "action_hash_matches": request.action_hash == approval.action_hash,
-                          "operator": operator},
-                ))
+                append_event(
+                    session,
+                    execution,
+                    EventRecord(
+                        event_type=EventType.APPROVAL_BINDING_MISMATCH,
+                        outcome="refused",
+                        tool_id=approval.tool_id,
+                        policy_version=f"{execution.policy_id}@v{execution.policy_version}",
+                        data={
+                            "step": approval.step,
+                            "approval_id": approval.id,
+                            "attempted_verdict": verdict,
+                            "presented_execution_id": request.execution_id[:40],
+                            "execution_matches": request.execution_id == approval.execution_id,
+                            "action_hash_matches": request.action_hash == approval.action_hash,
+                            "operator": operator,
+                        },
+                    ),
+                )
                 session.commit()
-            raise ConflictError("decision does not match the approval's execution and action",
-                                code="approval_binding_mismatch")
+            raise ConflictError(
+                "decision does not match the approval's execution and action", code="approval_binding_mismatch"
+            )
 
         if approval.status != "pending":
             if approval.status == target:
@@ -133,21 +156,27 @@ def decide(session: Session, settings: Settings, approval_id: str, verdict: Verd
         execution = _claim_execution(session, approval)
         if verdict == "approve":
             consumed = session.execute(
-                update(Approval).where(Approval.id == approval.id, Approval.consumed_at.is_(None))
+                update(Approval)
+                .where(Approval.id == approval.id, Approval.consumed_at.is_(None))
                 .values(consumed_at=now)
             ).rowcount  # type: ignore[attr-defined]
             if consumed != 1:
                 raise ConflictError("approval was already used", code="approval_consumed")
     # Lock released; the execution row is claimed (status=running), so no other decision can resume it.
-    resolution = Resolution(outcome="approved" if verdict == "approve" else "rejected",
-                            approval_id=approval.id, decided_by=operator, note=request.note)
+    resolution = Resolution(
+        outcome="approved" if verdict == "approve" else "rejected",
+        approval_id=approval.id,
+        decided_by=operator,
+        note=request.note,
+    )
     resume_execution(session, settings, execution, resolution)
     session.refresh(approval)
     return approval, execution, False
 
 
-def expire_due(session: Session, settings: Settings, *, now: datetime | None = None,
-               approval_id: str | None = None) -> list[str]:
+def expire_due(
+    session: Session, settings: Settings, *, now: datetime | None = None, approval_id: str | None = None
+) -> list[str]:
     """Expire pending approvals whose deadline has passed and unblock their executions."""
     now = now or utcnow()
     query = select(Approval.id).where(Approval.status == "pending", Approval.expires_at <= now)

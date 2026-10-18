@@ -18,7 +18,11 @@ from app.services.audit.log import list_events, verify_chain
 from app.services.seed import seed_all
 from app.tests.factories import make_scenario, make_settings
 
-SEND = {"label": "send", "tool_id": "email.send", "arguments": {"to": "ada@example.com", "subject": "Hi", "body": "Hello"}}
+SEND = {
+    "label": "send",
+    "tool_id": "email.send",
+    "arguments": {"to": "ada@example.com", "subject": "Hi", "body": "Hello"},
+}
 
 
 @pytest.fixture()
@@ -30,9 +34,18 @@ def settings() -> Settings:
 def seeded(session: Session) -> Session:
     seed_all(session)
     make_scenario(session, "send", [SEND, {"kind": "finish", "label": "done", "summary": "Email sent."}])
-    make_scenario(session, "send-continue", [{**SEND, "on_blocked": "continue"},
-                                             {"label": "draft", "tool_id": "email.draft",
-                                              "arguments": {"to": "ada@example.com", "subject": "Hi", "body": "x"}}])
+    make_scenario(
+        session,
+        "send-continue",
+        [
+            {**SEND, "on_blocked": "continue"},
+            {
+                "label": "draft",
+                "tool_id": "email.draft",
+                "arguments": {"to": "ada@example.com", "subject": "Hi", "body": "x"},
+            },
+        ],
+    )
     return session
 
 
@@ -43,8 +56,10 @@ def pause(session: Session, settings: Settings, scenario: str = "send") -> tuple
 
 
 def body(approval: Approval, **kw: str) -> ApprovalDecisionRequest:
-    return ApprovalDecisionRequest(execution_id=kw.get("execution_id", approval.execution_id),
-                                   action_hash=kw.get("action_hash", approval.action_hash))
+    return ApprovalDecisionRequest(
+        execution_id=kw.get("execution_id", approval.execution_id),
+        action_hash=kw.get("action_hash", approval.action_hash),
+    )
 
 
 def event_types(session: Session, execution_id: str) -> list[str]:
@@ -118,7 +133,7 @@ def test_tampered_action_hash_refused(seeded: Session, settings: Settings) -> No
 
 def test_approval_of_other_execution_cannot_unlock_this_one(seeded: Session, settings: Settings) -> None:
     """Approving A must never execute anything in B, even though both request the same action."""
-    exec_a, approval_a = pause(seeded, settings)
+    _exec_a, approval_a = pause(seeded, settings)
     exec_b, approval_b = pause(seeded, settings)
     assert approval_a.action_hash != approval_b.action_hash
     decide(seeded, settings, approval_a.id, "approve", body(approval_a), operator="alice")

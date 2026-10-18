@@ -31,12 +31,30 @@ def normalise(data: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def event_hash(prev_hash: str, *, execution_id: str, sequence: int, event_type: str, tool_id: str | None,
-               policy_version: str | None, outcome: str, data: dict[str, Any], timestamp: datetime) -> str:
-    body = canonical_json({
-        "execution_id": execution_id, "sequence": sequence, "event_type": event_type, "tool_id": tool_id,
-        "policy_version": policy_version, "outcome": outcome, "data": data, "timestamp": timestamp.isoformat(),
-    })
+def event_hash(
+    prev_hash: str,
+    *,
+    execution_id: str,
+    sequence: int,
+    event_type: str,
+    tool_id: str | None,
+    policy_version: str | None,
+    outcome: str,
+    data: dict[str, Any],
+    timestamp: datetime,
+) -> str:
+    body = canonical_json(
+        {
+            "execution_id": execution_id,
+            "sequence": sequence,
+            "event_type": event_type,
+            "tool_id": tool_id,
+            "policy_version": policy_version,
+            "outcome": outcome,
+            "data": data,
+            "timestamp": timestamp.isoformat(),
+        }
+    )
     return sha256_hex(prev_hash + body)
 
 
@@ -47,14 +65,28 @@ def append_event(session: Session, execution: Execution, record: EventRecord) ->
     data = normalise(record.data)
     timestamp = utcnow()
     digest = event_hash(
-        execution.last_event_hash, execution_id=execution.id, sequence=sequence,
-        event_type=str(record.event_type), tool_id=record.tool_id, policy_version=record.policy_version,
-        outcome=record.outcome, data=data, timestamp=timestamp,
+        execution.last_event_hash,
+        execution_id=execution.id,
+        sequence=sequence,
+        event_type=str(record.event_type),
+        tool_id=record.tool_id,
+        policy_version=record.policy_version,
+        outcome=record.outcome,
+        data=data,
+        timestamp=timestamp,
     )
     event = AuditEvent(
-        id=new_id("evt"), execution_id=execution.id, sequence=sequence, event_type=str(record.event_type),
-        tool_id=record.tool_id, policy_version=record.policy_version, outcome=record.outcome, data=data,
-        timestamp=timestamp, prev_hash=execution.last_event_hash, hash=digest,
+        id=new_id("evt"),
+        execution_id=execution.id,
+        sequence=sequence,
+        event_type=str(record.event_type),
+        tool_id=record.tool_id,
+        policy_version=record.policy_version,
+        outcome=record.outcome,
+        data=data,
+        timestamp=timestamp,
+        prev_hash=execution.last_event_hash,
+        hash=digest,
     )
     session.add(event)
     execution.event_count = sequence
@@ -65,9 +97,9 @@ def append_event(session: Session, execution: Execution, record: EventRecord) ->
 
 
 def list_events(session: Session, execution_id: str) -> list[AuditEvent]:
-    return list(session.scalars(
-        select(AuditEvent).where(AuditEvent.execution_id == execution_id).order_by(AuditEvent.sequence)
-    ))
+    return list(
+        session.scalars(select(AuditEvent).where(AuditEvent.execution_id == execution_id).order_by(AuditEvent.sequence))
+    )
 
 
 def verify_chain(events: Sequence[AuditEvent], expected_head: str | None = None) -> dict[str, Any]:
@@ -79,8 +111,14 @@ def verify_chain(events: Sequence[AuditEvent], expected_head: str | None = None)
         if event.prev_hash != prev:
             problems.append(f"event {event.sequence}: prev_hash does not link to the previous event")
         recomputed = event_hash(
-            event.prev_hash, execution_id=event.execution_id, sequence=event.sequence, event_type=event.event_type,
-            tool_id=event.tool_id, policy_version=event.policy_version, outcome=event.outcome, data=event.data,
+            event.prev_hash,
+            execution_id=event.execution_id,
+            sequence=event.sequence,
+            event_type=event.event_type,
+            tool_id=event.tool_id,
+            policy_version=event.policy_version,
+            outcome=event.outcome,
+            data=event.data,
             timestamp=event.timestamp,
         )
         if recomputed != event.hash:

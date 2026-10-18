@@ -19,8 +19,10 @@ READS = [
     {"label": "search", "tool_id": "kb.search", "arguments": {"query": "refund"}},
     {"label": "read", "tool_id": "docs.read", "arguments": {"doc_id": "refund-policy"}},
 ]
-SEND = [{"label": "draft", "tool_id": "email.draft", "arguments": {"to": "ada@example.com", "subject": "Hi", "body": "x"}},
-        {"label": "send", "tool_id": "email.send", "arguments": {"to": "ada@example.com", "subject": "Hi", "body": "x"}}]
+SEND = [
+    {"label": "draft", "tool_id": "email.draft", "arguments": {"to": "ada@example.com", "subject": "Hi", "body": "x"}},
+    {"label": "send", "tool_id": "email.send", "arguments": {"to": "ada@example.com", "subject": "Hi", "body": "x"}},
+]
 
 
 @pytest.fixture()
@@ -33,9 +35,14 @@ def seeded(session: Session) -> Session:
     seed_all(session)
     make_scenario(session, "reads", READS)
     make_scenario(session, "send", SEND)
-    make_scenario(session, "fx", [{"label": "fx", "tool_id": "ops.fetch_exchange_rate", "arguments": {"pair": "EUR/USD"}}])
-    make_scenario(session, "ticket", [{"label": "t", "tool_id": "ticket.create",
-                                       "arguments": {"title": "Customer call", "priority": "p2"}}])
+    make_scenario(
+        session, "fx", [{"label": "fx", "tool_id": "ops.fetch_exchange_rate", "arguments": {"pair": "EUR/USD"}}]
+    )
+    make_scenario(
+        session,
+        "ticket",
+        [{"label": "t", "tool_id": "ticket.create", "arguments": {"title": "Customer call", "priority": "p2"}}],
+    )
     return session
 
 
@@ -45,16 +52,23 @@ def run(session: Session, settings: Settings, scenario: str, policy: str = "base
 
 def approve(session: Session, settings: Settings, execution: Execution) -> Execution:
     approval = session.scalars(select(Approval).where(Approval.execution_id == execution.id)).one()
-    _, execution, _ = decide(session, settings, approval.id, "approve",
-                             ApprovalDecisionRequest(execution_id=execution.id, action_hash=approval.action_hash),
-                             operator="alice")
+    _, execution, _ = decide(
+        session,
+        settings,
+        approval.id,
+        "approve",
+        ApprovalDecisionRequest(execution_id=execution.id, action_hash=approval.action_hash),
+        operator="alice",
+    )
     return execution
 
 
 def counts(session: Session) -> tuple[int, int, int]:
-    return (session.scalar(select(func.count()).select_from(Execution)) or 0,
-            session.scalar(select(func.count()).select_from(Approval)) or 0,
-            session.scalar(select(func.count()).select_from(AuditEvent)) or 0)
+    return (
+        session.scalar(select(func.count()).select_from(Execution)) or 0,
+        session.scalar(select(func.count()).select_from(Approval)) or 0,
+        session.scalar(select(func.count()).select_from(AuditEvent)) or 0,
+    )
 
 
 def test_recorded_mode_reconstructs_timeline(seeded: Session, settings: Settings) -> None:
@@ -81,8 +95,13 @@ def test_simulation_is_deterministic(seeded: Session, settings: Settings) -> Non
     approve(seeded, settings, execution)
     a = create_replay(seeded, settings, ReplayCreate(execution_id=execution.id, mode="simulate"))
     b = create_replay(seeded, settings, ReplayCreate(execution_id=execution.id, mode="simulate"))
-    key = lambda r: [event_key(SimpleNamespace(**{k: f[k] for k in ("event_type", "tool_id", "outcome", "data")}))  # noqa: E731
-                     for f in r.result["frames"]]
+
+    def key(r):
+        return [
+            event_key(SimpleNamespace(**{k: f[k] for k in ("event_type", "tool_id", "outcome", "data")}))
+            for f in r.result["frames"]
+        ]
+
     assert key(a) == key(b)
 
 
@@ -95,16 +114,17 @@ def test_replay_reuses_recorded_approval_and_never_repeats_side_effects(seeded: 
     assert replay.result["divergence"]["diverged"] is False, replay.result["divergence"]
     granted = [f for f in replay.result["frames"] if f["event_type"] == "approval.granted"]
     assert granted and granted[0]["data"]["source"] == "recorded"
-    assert counts(seeded) == before                      # no new executions, approvals or audit rows
+    assert counts(seeded) == before  # no new executions, approvals or audit rows
     seeded.refresh(execution)
     assert execution.sandbox_state["outbox"] == outbox_before
-    assert replay.result["sandbox_effects"]["outbox"] == 1   # only inside the isolated replay sandbox
+    assert replay.result["sandbox_effects"]["outbox"] == 1  # only inside the isolated replay sandbox
 
 
 def test_policy_comparison_finds_first_divergence(seeded: Session, settings: Settings) -> None:
     execution = run(seeded, settings, "reads")
-    replay = create_replay(seeded, settings, ReplayCreate(execution_id=execution.id, mode="simulate",
-                                                          policy_id="strict-lockdown"))
+    replay = create_replay(
+        seeded, settings, ReplayCreate(execution_id=execution.id, mode="simulate", policy_id="strict-lockdown")
+    )
     div = replay.result["divergence"]
     assert div["diverged"] is True
     assert div["left"]["event_type"] == "policy.evaluated" and div["left"]["label"] == "search"
@@ -114,14 +134,20 @@ def test_policy_comparison_finds_first_divergence(seeded: Session, settings: Set
 
 
 def test_missing_recorded_approval_is_unavailable_unless_what_if(seeded: Session, settings: Settings) -> None:
-    execution = run(seeded, settings, "ticket")                 # allowed under baseline, no approval recorded
-    strict = create_replay(seeded, settings, ReplayCreate(execution_id=execution.id, mode="simulate",
-                                                          policy_id="strict-lockdown"))
+    execution = run(seeded, settings, "ticket")  # allowed under baseline, no approval recorded
+    strict = create_replay(
+        seeded, settings, ReplayCreate(execution_id=execution.id, mode="simulate", policy_id="strict-lockdown")
+    )
     assert strict.result["final_status"] == "blocked"
     assert "replay_unresolvable" in strict.result["status_reason"]
     assert strict.result["unavailable_frames"]
-    what_if = create_replay(seeded, settings, ReplayCreate(execution_id=execution.id, mode="simulate",
-                                                           policy_id="strict-lockdown", approval_strategy="approve_all"))
+    what_if = create_replay(
+        seeded,
+        settings,
+        ReplayCreate(
+            execution_id=execution.id, mode="simulate", policy_id="strict-lockdown", approval_strategy="approve_all"
+        ),
+    )
     assert what_if.result["final_status"] == "completed"
 
 
@@ -135,8 +161,10 @@ def test_nondeterministic_tool_uses_recorded_output(seeded: Session, settings: S
 
 def test_two_live_runs_of_nondeterministic_tool_can_diverge(seeded: Session, settings: Settings) -> None:
     runs = [run(seeded, settings, "fx") for _ in range(5)]
-    comparisons = [compare_executions(seeded, CompareRequest(left_execution_id=runs[0].id, right_execution_id=r.id))
-                   for r in runs[1:]]
+    comparisons = [
+        compare_executions(seeded, CompareRequest(left_execution_id=runs[0].id, right_execution_id=r.id))
+        for r in runs[1:]
+    ]
     diverged = [c for c in comparisons if c["divergence"]["diverged"]]
     assert diverged, "unseeded jitter should produce at least one differing output in 5 runs"
     assert diverged[0]["divergence"]["left"]["event_type"] == "tool.result"
@@ -155,6 +183,7 @@ def test_compare_executions_under_two_policies(seeded: Session, settings: Settin
 def test_first_divergence_prefix_and_identical() -> None:
     def ev(seq: int, t: str, outcome: str = "ok") -> SimpleNamespace:
         return SimpleNamespace(sequence=seq, event_type=t, tool_id=None, outcome=outcome, data={})
+
     a = [ev(1, "execution.created"), ev(2, "execution.started"), ev(3, "execution.completed", "completed")]
     assert first_divergence(a, list(a))["diverged"] is False
     short = first_divergence(a, a[:2])

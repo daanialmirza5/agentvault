@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     max_tool_calls: int = Field(default=20, ge=1, le=200)
     max_identical_calls: int = Field(default=3, ge=1, le=50)
     approval_ttl_seconds: int = Field(default=900, ge=1, le=7 * 24 * 3600)
+    approval_sweep_interval_seconds: int = Field(default=15, ge=0, le=3600)
     execution_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
     retention_days: int = Field(default=30, ge=0)
     seed_on_startup: bool = True

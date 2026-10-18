@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import Engine
 
+from alembic import command
 from app.core.config import BACKEND_DIR
 
 

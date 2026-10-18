@@ -127,12 +127,22 @@ def _version_key(version: str) -> tuple[int, ...]:
 
 def to_spec(row: ToolDefinition) -> ToolSpec:
     return ToolSpec(
-        tool_id=row.tool_id, version=row.version, name=row.name, description=row.description,
-        category=row.category, risk_level=row.risk_level,  # type: ignore[arg-type]
-        mutating=row.mutating, requires_approval=row.requires_approval, timeout_seconds=row.timeout_seconds,
-        implementation=row.implementation, input_schema=row.input_schema, output_schema=row.output_schema,
-        mock_config=row.mock_config, deterministic=row.deterministic,
-        sensitive_arguments=list(row.sensitive_arguments), builtin=row.builtin,
+        tool_id=row.tool_id,
+        version=row.version,
+        name=row.name,
+        description=row.description,
+        category=row.category,
+        risk_level=row.risk_level,
+        mutating=row.mutating,
+        requires_approval=row.requires_approval,
+        timeout_seconds=row.timeout_seconds,
+        implementation=row.implementation,
+        input_schema=row.input_schema,
+        output_schema=row.output_schema,
+        mock_config=row.mock_config,
+        deterministic=row.deterministic,
+        sensitive_arguments=list(row.sensitive_arguments),
+        builtin=row.builtin,
     )
 
 
@@ -174,7 +184,9 @@ def register_tool(session: Session, payload: ToolCreate) -> ToolDefinition:
     if payload.implementation not in IMPLEMENTATIONS:
         raise ValidationFailedError("unknown implementation")
     existing = session.scalar(
-        select(ToolDefinition).where(ToolDefinition.tool_id == payload.tool_id, ToolDefinition.version == payload.version)
+        select(ToolDefinition).where(
+            ToolDefinition.tool_id == payload.tool_id, ToolDefinition.version == payload.version
+        )
     )
     if existing is not None:
         raise ConflictError(f"tool {payload.tool_id}@{payload.version} already exists; bump the version")
@@ -185,7 +197,10 @@ def register_tool(session: Session, payload: ToolCreate) -> ToolDefinition:
         if not re.fullmatch(r"[A-Za-z0-9_]{1,64}", key):
             raise ValidationFailedError("sensitive_arguments must be plain property names")
     row = ToolDefinition(
-        id=new_id("tool"), builtin=False, enabled=True, deterministic=True,
+        id=new_id("tool"),
+        builtin=False,
+        enabled=True,
+        deterministic=True,
         **payload.model_dump(),
     )
     session.add(row)
@@ -197,16 +212,23 @@ def upsert_builtin_tools(session: Session, definitions: Iterable[dict[str, Any]]
     created = 0
     for d in definitions:
         exists = session.scalar(
-            select(ToolDefinition.id).where(ToolDefinition.tool_id == d["tool_id"], ToolDefinition.version == d["version"])
+            select(ToolDefinition.id).where(
+                ToolDefinition.tool_id == d["tool_id"], ToolDefinition.version == d["version"]
+            )
         )
         if exists:
             continue
-        session.add(ToolDefinition(
-            id=new_id("tool"), builtin=True, enabled=True,
-            mock_config=d.get("mock_config", {}), deterministic=d.get("deterministic", True),
-            sensitive_arguments=d.get("sensitive_arguments", []),
-            **{k: v for k, v in d.items() if k not in {"mock_config", "deterministic", "sensitive_arguments"}},
-        ))
+        session.add(
+            ToolDefinition(
+                id=new_id("tool"),
+                builtin=True,
+                enabled=True,
+                mock_config=d.get("mock_config", {}),
+                deterministic=d.get("deterministic", True),
+                sensitive_arguments=d.get("sensitive_arguments", []),
+                **{k: v for k, v in d.items() if k not in {"mock_config", "deterministic", "sensitive_arguments"}},
+            )
+        )
         created += 1
     session.flush()
     return created

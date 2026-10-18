@@ -29,8 +29,16 @@ def _decide(policy: dict[str, Any], tool_id: str, args: dict[str, Any], ctx: Pol
     doc = PolicyDocument.model_validate(policy["document"])
     tool = REGISTRY.get(tool_id)
     errors = REGISTRY.validate_arguments(tool, args) if tool else []
-    return evaluate(doc, policy_id=policy["id"], policy_version=1, tool_id=tool_id, tool=tool,
-                    arguments=args, argument_errors=errors, context=ctx)
+    return evaluate(
+        doc,
+        policy_id=policy["id"],
+        policy_version=1,
+        tool_id=tool_id,
+        tool=tool,
+        arguments=args,
+        argument_errors=errors,
+        context=ctx,
+    )
 
 
 def test_low_risk_read_is_allowed() -> None:
@@ -40,7 +48,10 @@ def test_low_risk_read_is_allowed() -> None:
 
 def test_drafting_allowed_sending_requires_approval() -> None:
     assert _decide(BASELINE, "email.draft", {"to": "a@example.com", "subject": "s", "body": "b"}).outcome == "allow"
-    assert _decide(BASELINE, "email.send", {"to": "a@example.com", "subject": "s", "body": "b"}).outcome == "require_approval"
+    assert (
+        _decide(BASELINE, "email.send", {"to": "a@example.com", "subject": "s", "body": "b"}).outcome
+        == "require_approval"
+    )
 
 
 def test_unknown_tool_denied_even_under_default_allow() -> None:
@@ -68,13 +79,26 @@ def test_conflicting_rules_resolve_deny_overrides() -> None:
 
 
 def test_priority_only_orders_rules_with_the_same_effect() -> None:
-    doc = PolicyDocument.model_validate({"default_effect": "deny", "rules": [
-        {"id": "allow-first", "effect": "allow", "priority": 0, "match": {}},
-        {"id": "deny-late", "effect": "deny", "priority": 9999, "match": {"tool_ids": ["kb.*"]}},
-    ]})
+    doc = PolicyDocument.model_validate(
+        {
+            "default_effect": "deny",
+            "rules": [
+                {"id": "allow-first", "effect": "allow", "priority": 0, "match": {}},
+                {"id": "deny-late", "effect": "deny", "priority": 9999, "match": {"tool_ids": ["kb.*"]}},
+            ],
+        }
+    )
     tool = REGISTRY.get("kb.search")
-    d = evaluate(doc, policy_id="p", policy_version=1, tool_id="kb.search", tool=tool,
-                 arguments={"query": "x"}, argument_errors=[], context=SANDBOX)
+    d = evaluate(
+        doc,
+        policy_id="p",
+        policy_version=1,
+        tool_id="kb.search",
+        tool=tool,
+        arguments={"query": "x"},
+        argument_errors=[],
+        context=SANDBOX,
+    )
     assert d.outcome == "deny" and d.deciding_rule == "deny-late"
 
 
@@ -96,45 +120,71 @@ def test_environment_condition() -> None:
 
 
 def test_scenario_tag_condition() -> None:
-    doc = PolicyDocument.model_validate({"default_effect": "allow", "rules": [
-        {"id": "deny-untrusted", "effect": "deny", "match": {"scenario_tags": ["untrusted-input"]}},
-    ]})
+    doc = PolicyDocument.model_validate(
+        {
+            "default_effect": "allow",
+            "rules": [
+                {"id": "deny-untrusted", "effect": "deny", "match": {"scenario_tags": ["untrusted-input"]}},
+            ],
+        }
+    )
     tool = REGISTRY.get("kb.search")
-    kwargs: dict[str, Any] = {"policy_id": "p", "policy_version": 1, "tool_id": "kb.search", "tool": tool,
-                              "arguments": {"query": "x"}, "argument_errors": []}
+    kwargs: dict[str, Any] = {
+        "policy_id": "p",
+        "policy_version": 1,
+        "tool_id": "kb.search",
+        "tool": tool,
+        "arguments": {"query": "x"},
+        "argument_errors": [],
+    }
     assert evaluate(doc, context=SANDBOX, **kwargs).outcome == "allow"
     tagged = PolicyContext(environment="sandbox", scenario_id="t", scenario_tags=("untrusted-input",))
     assert evaluate(doc, context=tagged, **kwargs).outcome == "deny"
 
 
-@pytest.mark.parametrize("op,value,actual,expected", [
-    ("eq", "a", "a", True), ("neq", "a", "b", True), ("in", ["a", "b"], "b", True),
-    ("not_in", ["a"], "a", False), ("contains", "LIMIT", "credit_limit", True), ("prefix", "CUST-0", "CUST-0001", True),
-    ("suffix", ".com", "a@example.com", True), ("glob", "*@example.com", "a@example.com", True),
-    ("gt", 10, 11, True), ("lte", 10, 11, False), ("gt", 1, "11", False),
-])
+@pytest.mark.parametrize(
+    "op,value,actual,expected",
+    [
+        ("eq", "a", "a", True),
+        ("neq", "a", "b", True),
+        ("in", ["a", "b"], "b", True),
+        ("not_in", ["a"], "a", False),
+        ("contains", "LIMIT", "credit_limit", True),
+        ("prefix", "CUST-0", "CUST-0001", True),
+        ("suffix", ".com", "a@example.com", True),
+        ("glob", "*@example.com", "a@example.com", True),
+        ("gt", 10, 11, True),
+        ("lte", 10, 11, False),
+        ("gt", 1, "11", False),
+    ],
+)
 def test_condition_operators(op: str, value: Any, actual: Any, expected: bool) -> None:
     from app.services.policy_engine.engine import condition_holds
     from app.services.policy_engine.model import ArgumentCondition
+
     assert condition_holds(ArgumentCondition(path="x", op=op, value=value), {"x": actual}) is expected  # type: ignore[arg-type]
 
 
 def test_missing_argument_semantics() -> None:
     from app.services.policy_engine.engine import condition_holds
     from app.services.policy_engine.model import ArgumentCondition
+
     assert condition_holds(ArgumentCondition(path="x", op="eq", value=1), {}) is False
     assert condition_holds(ArgumentCondition(path="x", op="neq", value=1), {}) is True
     assert condition_holds(ArgumentCondition(path="x", op="not_exists"), {}) is True
 
 
-@pytest.mark.parametrize("document", [
-    {"rules": [{"id": "dup", "effect": "allow"}, {"id": "dup", "effect": "deny"}]},
-    {"rules": [{"id": "x", "effect": "maybe"}]},
-    {"rules": [{"id": "x", "effect": "deny", "match": {"arguments": [{"path": "a", "op": "in", "value": "str"}]}}]},
-    {"rules": [{"id": "x", "effect": "deny", "match": {"tool_ids": []}}]},
-    {"rules": [{"id": "x", "effect": "deny", "match": {"unknown_dimension": 1}}]},
-    {"default_effect": "allow", "extra": True},
-])
+@pytest.mark.parametrize(
+    "document",
+    [
+        {"rules": [{"id": "dup", "effect": "allow"}, {"id": "dup", "effect": "deny"}]},
+        {"rules": [{"id": "x", "effect": "maybe"}]},
+        {"rules": [{"id": "x", "effect": "deny", "match": {"arguments": [{"path": "a", "op": "in", "value": "str"}]}}]},
+        {"rules": [{"id": "x", "effect": "deny", "match": {"tool_ids": []}}]},
+        {"rules": [{"id": "x", "effect": "deny", "match": {"unknown_dimension": 1}}]},
+        {"default_effect": "allow", "extra": True},
+    ],
+)
 def test_invalid_documents_rejected(document: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         PolicyDocument.model_validate(document)
@@ -144,11 +194,16 @@ def test_validator_reports_conflicts_and_shadowing() -> None:
     tools = REGISTRY.all()
     codes = {i.code for i in validate_policy(PolicyDocument.model_validate(BASELINE["document"]), tools)}
     assert "overlapping_rules" in codes
-    shadow = PolicyDocument.model_validate({"default_effect": "allow", "rules": [
-        {"id": "allow-email", "effect": "allow", "match": {"tool_ids": ["email.draft"]}},
-        {"id": "deny-comms", "effect": "deny", "match": {"categories": ["communication"]}},
-        {"id": "nothing", "effect": "deny", "match": {"tool_ids": ["nope.*"]}},
-    ]})
+    shadow = PolicyDocument.model_validate(
+        {
+            "default_effect": "allow",
+            "rules": [
+                {"id": "allow-email", "effect": "allow", "match": {"tool_ids": ["email.draft"]}},
+                {"id": "deny-comms", "effect": "deny", "match": {"categories": ["communication"]}},
+                {"id": "nothing", "effect": "deny", "match": {"tool_ids": ["nope.*"]}},
+            ],
+        }
+    )
     found = {i.code for i in validate_policy(shadow, tools)}
     assert {"shadowed_rule", "matches_no_tool", "default_allow"} <= found
 
