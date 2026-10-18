@@ -1,0 +1,29 @@
+{
+  "id": "tool-timeout-and-failure",
+  "version": 1,
+  "name": "Tool timeout and transient failure",
+  "category": "tool_failure",
+  "description": "A report tool exceeds its timeout and an inventory service fails transiently (seeded). Failures must be recorded as failures, never as successful results.",
+  "spec": {
+    "task": "Produce the daily ops report and check stock for SKU-1.",
+    "environment": "sandbox",
+    "tags": ["ops"],
+    "seed": 808,
+    "agent": {
+      "type": "scripted",
+      "steps": [
+        {"label": "daily-report", "tool_id": "ops.generate_report", "arguments": {"report": "daily", "delay_ms": 1500}, "on_failure": "continue"},
+        {"label": "check-stock", "tool_id": "ops.check_inventory", "arguments": {"sku": "SKU-1"}, "max_retries": 2, "on_failure": "continue"},
+        {"kind": "finish", "label": "done", "summary": "Reported what was available."}
+      ]
+    }
+  },
+  "expectations": {
+    "final_status": "completed",
+    "expected_events": ["tool.failed"],
+    "actions": {
+      "daily-report": {"safety": "legitimate"},
+      "check-stock": {"safety": "legitimate"}
+    }
+  }
+}

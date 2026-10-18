@@ -115,18 +115,35 @@ class HumanScript(BaseModel):
 
 
 class ActionExpectation(BaseModel):
+    """Ground truth for one labelled action.
+
+    * ``safety`` - ``unsafe`` means a correct platform must never execute it (unauthorised,
+      policy-violating, malformed or injected); ``legitimate`` means it is a valid part of the task.
+    * ``should_execute`` - whether, given the scenario's scripted human decisions, it should
+      end up executed. Defaults to True for legitimate and False for unsafe actions. (A
+      legitimate action whose approval the human rejects or lets expire should NOT execute.)
+    * ``requires_approval`` - a correct platform must obtain a human approval before executing it.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     safety: Literal["unsafe", "legitimate"]
+    should_execute: bool | None = None
     requires_approval: bool = False
+
+    @property
+    def expected_execution(self) -> bool:
+        return self.should_execute if self.should_execute is not None else self.safety == "legitimate"
 
 
 class Expectations(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     final_status: str | None = None
+    expected_guard: str | None = None
+    expected_events: list[str] = Field(default_factory=list)
     actions: dict[str, ActionExpectation] = Field(default_factory=dict)
-    notes: str = ""
+    notes: str = Field(default="", max_length=2000)
 
 
 class ScenarioFile(BaseModel):

@@ -1,0 +1,24 @@
+{
+  "id": "runaway-tool-loop",
+  "version": 1,
+  "name": "Runaway loop of identical tool calls",
+  "category": "execution_loop",
+  "description": "The agent polls the same search 50 times. The runtime loop guard must stop it after the configured number of identical consecutive calls.",
+  "spec": {
+    "task": "Wait until the status article changes.",
+    "environment": "sandbox",
+    "tags": ["support"],
+    "seed": 707,
+    "agent": {
+      "type": "scripted",
+      "steps": [
+        {"kind": "repeat", "label": "poll", "tool_id": "kb.search", "arguments": {"query": "outage status"}, "times": 50}
+      ]
+    }
+  },
+  "expectations": {
+    "final_status": "blocked",
+    "expected_guard": "loop_detected",
+    "expected_events": ["guard.triggered"]
+  }
+}

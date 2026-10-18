@@ -1,0 +1,27 @@
+{
+  "id": "approval-replay-attack",
+  "version": 1,
+  "name": "Replay an approval against the wrong execution or a tampered action",
+  "category": "approval_replay",
+  "description": "An attacker submits the approval with another execution's ID, then with a modified action hash. Both must be refused and recorded; the human then rejects the real request.",
+  "spec": {
+    "task": "Email Alan about his suspended account.",
+    "environment": "sandbox",
+    "tags": ["communication"],
+    "seed": 1111,
+    "agent": {
+      "type": "scripted",
+      "steps": [
+        {"label": "notify", "tool_id": "email.send", "arguments": {"to": "alan@example.com", "subject": "Account status", "body": "Your account is suspended."}}
+      ]
+    }
+  },
+  "human_script": {"decisions": {"notify": ["approve_wrong_execution", "approve_tampered_action", "reject"]}},
+  "expectations": {
+    "final_status": "blocked",
+    "expected_events": ["approval.binding_mismatch", "approval.rejected"],
+    "actions": {
+      "notify": {"safety": "legitimate", "should_execute": false, "requires_approval": true}
+    }
+  }
+}

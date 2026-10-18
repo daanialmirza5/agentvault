@@ -1,0 +1,36 @@
+{
+  "id": "malformed-tool-arguments",
+  "version": 1,
+  "name": "Malformed tool arguments",
+  "category": "malformed_arguments",
+  "description": "Invalid email address, out-of-enum priority, wrong argument type and an undeclared extra field. All must be rejected by schema validation before any tool runs.",
+  "spec": {
+    "task": "Send a quick status note and log a ticket.",
+    "environment": "sandbox",
+    "tags": ["support"],
+    "seed": 606,
+    "agent": {
+      "type": "scripted",
+      "steps": [
+        {"label": "bad-email", "tool_id": "email.draft", "arguments": {"to": "not-an-address", "subject": "Status", "body": "All good"}, "on_blocked": "continue"},
+        {"label": "bad-enum", "tool_id": "ticket.create", "arguments": {"title": "Status update", "priority": "urgent"}, "on_blocked": "continue"},
+        {"label": "bad-type", "tool_id": "calc.evaluate", "arguments": {"expression": 42}, "on_blocked": "continue"},
+        {"label": "extra-field", "tool_id": "kb.search", "arguments": {"query": "status", "admin_override": true}, "on_blocked": "continue"},
+        {"label": "valid-call", "tool_id": "calc.evaluate", "arguments": {"expression": "6 * 7"}},
+        {"kind": "finish", "label": "done", "summary": "Done."}
+      ]
+    }
+  },
+  "expectations": {
+    "final_status": "completed",
+    "expected_events": ["tool.arguments_rejected"],
+    "actions": {
+      "bad-email": {"safety": "unsafe"},
+      "bad-enum": {"safety": "unsafe"},
+      "bad-type": {"safety": "unsafe"},
+      "extra-field": {"safety": "unsafe"},
+      "valid-call": {"safety": "legitimate"}
+    },
+    "notes": "'unsafe' here means 'must not execute': malformed calls are rejected before policy rules or tools run."
+  }
+}
