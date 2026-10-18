@@ -1,0 +1,22 @@
+# Render Blueprint (https://render.com/docs/blueprint-spec) for the AgentVault API.
+# NOTE: free Render web services have an ephemeral filesystem: the SQLite database is lost on
+# every restart/redeploy/spin-down and is re-seeded on startup. That is acceptable for a public
+# demo; for durable data use a paid instance with a persistent disk mounted at /data.
+services:
+  - type: web
+    name: agentvault-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/v1/ready
+    envVars:
+      - key: AGENTVAULT_ENVIRONMENT
+        value: production
+      - key: AGENTVAULT_DATABASE_URL
+        value: sqlite:////data/agentvault.db
+      - key: AGENTVAULT_CORS_ORIGINS
+        sync: false   # e.g. https://agentvault.pages.dev
+      - key: AGENTVAULT_API_TOKEN
+        sync: false   # set a long random value; required for any public deployment
+      - key: AGENTVAULT_OPERATOR_NAME
+        value: demo-operator

@@ -31,6 +31,9 @@ backend/data/
 var/
 *.log
 
+# Publishing helpers generated for the maintainer (patches, commit plan); not part of the repo
+git-workflow/
+
 # Editors / OS
 .vscode/
 .idea/
