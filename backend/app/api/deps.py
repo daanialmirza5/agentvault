@@ -13,19 +13,29 @@ from app.core.errors import AuthError
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
-def require_write_access(settings: SettingsDep, authorization: Annotated[str | None, Header()] = None) -> str:
-    """Authorise mutating requests and return the operator identity.
-
-    Single-user local mode (no ``AGENTVAULT_API_TOKEN``): every caller is the configured
-    operator. With a token configured, a matching ``Authorization: Bearer`` header is required.
-    This is a shared-secret gate, not multi-user authentication.
-    """
+def _check_token(settings: Settings, authorization: str | None) -> None:
     if settings.auth_required:
         assert settings.api_token is not None
         expected = settings.api_token.get_secret_value()
         scheme, _, supplied = (authorization or "").partition(" ")
         if scheme.lower() != "bearer" or not hmac.compare_digest(supplied.encode(), expected.encode()):
             raise AuthError("a valid bearer token is required for this operation")
+
+
+def require_read_access(settings: SettingsDep, authorization: Annotated[str | None, Header()] = None) -> None:
+    """With a token configured, every endpoint except health/readiness requires it (audit data is sensitive)."""
+    _check_token(settings, authorization)
+
+
+def require_write_access(settings: SettingsDep, authorization: Annotated[str | None, Header()] = None) -> str:
+    """Authorise mutating requests and return the operator identity.
+
+    Single-user local mode (no ``AGENTVAULT_API_TOKEN``): every caller is the configured
+    operator. With a token configured, a matching ``Authorization: Bearer`` header is required.
+    This is a shared-secret gate, not multi-user authentication: everyone holding the token acts
+    as the same operator.
+    """
+    _check_token(settings, authorization)
     return settings.operator_name
 
 

@@ -6,10 +6,11 @@ import threading
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.api.deps import require_read_access
 from app.api.errors import install_error_handlers
 from app.api.middleware import BodySizeLimitMiddleware, RequestContextMiddleware
 from app.api.routes import (
@@ -89,8 +90,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_error_handlers(app)
 
     api = APIRouter(prefix="/api/v1")
-    for module in (system, tools, policies, scenarios, executions, approvals, replays, evaluations, reports, audit):
-        api.include_router(module.router)
+    api.include_router(system.router)  # health/ready stay public; /stats is protected below
+    for module in (tools, policies, scenarios, executions, approvals, replays, evaluations, reports, audit):
+        api.include_router(module.router, dependencies=[Depends(require_read_access)])
     app.include_router(api)
 
     # Order: the last added middleware runs first.

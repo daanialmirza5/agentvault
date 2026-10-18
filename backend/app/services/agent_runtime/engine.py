@@ -166,8 +166,13 @@ def effective_limits(settings: Settings, spec: ScenarioSpec) -> RunLimits:
 
 
 def make_agent(spec: ScenarioSpec, settings: Settings) -> Agent:
+    factory = None
+    if spec.agent.type == "llm":
+        from app.services.agent_runtime.llm_adapter import llm_agent_factory
+
+        factory = llm_agent_factory(settings)
     try:
-        return build_agent(spec.agent, llm_factory=None)
+        return build_agent(spec.agent, llm_factory=factory)
     except ValueError as exc:
         raise ValidationFailedError(str(exc), code="agent_unavailable") from exc
 

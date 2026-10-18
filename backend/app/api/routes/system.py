@@ -8,7 +8,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app import __version__
-from app.api.deps import SettingsDep
+from app.api.deps import SettingsDep, require_read_access
 from app.core.db import get_engine, get_read_session
 from app.core.migrations import schema_is_current
 from app.models import Policy, Scenario, ToolDefinition
@@ -50,6 +50,8 @@ def ready(session: ReadSession, settings: SettingsDep) -> JSONResponse:
     return JSONResponse(status_code=200 if ok else 503, content=body)
 
 
-@router.get("/stats", summary="Dashboard aggregates derived from stored records")
+@router.get(
+    "/stats", summary="Dashboard aggregates derived from stored records", dependencies=[Depends(require_read_access)]
+)
 def stats(session: ReadSession) -> dict[str, Any]:
     return dashboard_stats(session)

@@ -260,7 +260,11 @@ def test_readiness_fails_without_seed_data(tmp_path: Path) -> None:
 
 def test_bearer_token_required_for_mutations_when_configured(tmp_path: Path) -> None:
     with _client(tmp_path, api_token="s3cret-token") as c:
-        assert c.get("/api/v1/tools").status_code == 200
+        assert c.get("/api/v1/health").status_code == 200  # liveness/readiness stay public
+        assert c.get("/api/v1/ready").status_code == 200
+        assert c.get("/api/v1/tools").status_code == 401  # audit data is protected when a token is set
+        assert c.get("/api/v1/stats").status_code == 401
+        assert c.get("/api/v1/tools", headers={"Authorization": "Bearer s3cret-token"}).status_code == 200
         body = {"scenario_id": "support-faq-lookup"}
         assert c.post("/api/v1/executions", json=body).status_code == 401
         assert c.post("/api/v1/executions", json=body, headers={"Authorization": "Bearer wrong"}).status_code == 401
