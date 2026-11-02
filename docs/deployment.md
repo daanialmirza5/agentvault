@@ -41,7 +41,7 @@ each provider's pricing page.
 ### Render (API)
 1. Push the repository to GitHub.
 2. In Render, choose **New → Blueprint** and select the repo (uses `render.yaml`).
-3. Set `AGENTVAULT_API_TOKEN` (long random value) and `AGENTVAULT_CORS_ORIGINS` (your frontend origin, e.g. `https://agentvault.pages.dev`).
+3. Set `AGENTVAULT_API_TOKEN` (long random value) and `AGENTVAULT_CORS_ORIGINS` (your frontend origin, e.g. `https://your-frontend.example.com`).
 4. Wait for `/api/v1/ready` to return 200.
 
 ### Cloudflare Pages or Netlify (frontend)

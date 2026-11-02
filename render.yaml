@@ -15,7 +15,7 @@ services:
       - key: AGENTVAULT_DATABASE_URL
         value: sqlite:////data/agentvault.db
       - key: AGENTVAULT_CORS_ORIGINS
-        sync: false   # e.g. https://agentvault.pages.dev
+        sync: false   # e.g. https://your-frontend.example.com
       - key: AGENTVAULT_API_TOKEN
         sync: false   # set a long random value; required for any public deployment
       - key: AGENTVAULT_OPERATOR_NAME
