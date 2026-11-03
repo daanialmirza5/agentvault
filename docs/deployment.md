@@ -1,8 +1,14 @@
 # Deployment guide
 
-**Status:** AgentVault has been verified locally (native) and in Docker Compose. It has **not**
-been deployed to a public host yet.
-The steps below are prepared but unexecuted. Verify every URL yourself before you call it live.
+**Status:** AgentVault has been verified locally (native) and in Docker Compose. The Docker image
+serves the API and the web UI from one process.
+
+- **Public sandbox demo (Option A, quickest):** `render.yaml` deploys one free Render web service with
+  `AGENTVAULT_DEMO_MODE=true` (no token, scripted agents, mock tools, database reset on restart). In
+  Render choose **New → Blueprint** and select the repository.
+- **Private deployments:** the options below keep demo mode off and require `AGENTVAULT_API_TOKEN`.
+
+Verify every URL yourself before you call it live.
 
 ## What was verified (2026-10-18)
 
