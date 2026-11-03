@@ -46,6 +46,7 @@ def ready(session: ReadSession, settings: SettingsDep) -> JSONResponse:
         "version": __version__,
         "auth_mode": "bearer_token" if settings.auth_required else "single_user_local",
         "llm_adapter_enabled": settings.llm_enabled,
+        "demo_mode": settings.demo_mode,
     }
     return JSONResponse(status_code=200 if ok else 503, content=body)
 

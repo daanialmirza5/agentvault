@@ -1,5 +1,15 @@
-# AgentVault backend (FastAPI + SQLite). Build from the repository root:
+# AgentVault API (FastAPI + SQLite), also serving the built web UI. Build from the repository root:
 #   docker build -t agentvault-api .
+
+# ---- Web UI ---------------------------------------------------------------------------------
+FROM node:22-alpine AS frontend
+WORKDIR /build
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+RUN npm run build
+
+# ---- API ------------------------------------------------------------------------------------
 FROM python:3.13-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -8,7 +18,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     AGENTVAULT_ENVIRONMENT=production \
     AGENTVAULT_DATABASE_URL=sqlite:////data/agentvault.db \
-    AGENTVAULT_SCENARIOS_DIR=/app/scenarios
+    AGENTVAULT_SCENARIOS_DIR=/app/scenarios \
+    AGENTVAULT_STATIC_DIR=/app/static
 
 WORKDIR /app/backend
 COPY backend/requirements.txt ./requirements.txt
@@ -18,6 +29,7 @@ COPY backend/alembic.ini ./alembic.ini
 COPY backend/alembic ./alembic
 COPY backend/app ./app
 COPY scenarios /app/scenarios
+COPY --from=frontend /build/dist /app/static
 
 # Run as an unprivileged user; only /data is writable.
 RUN useradd --system --uid 10001 --home /nonexistent agentvault \

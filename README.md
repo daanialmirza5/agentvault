@@ -284,6 +284,8 @@ All variables are optional; see [.env.example](.env.example).
 | `AGENTVAULT_RETENTION_DAYS` | `30` | Eligibility for `python -m app.cli purge` |
 | `AGENTVAULT_SEED_ON_STARTUP` | `true` | Seed tools, policies, scenarios at startup |
 | `AGENTVAULT_LLM_BASE_URL` / `_API_KEY` / `_MODEL` | *(empty)* | Optional OpenAI-compatible adapter; disabled unless all three are set |
+| `AGENTVAULT_DEMO_MODE` | `false` | Public sandbox demo: no token required and a "public demo" banner in the UI. Refused together with an API token or an LLM endpoint |
+| `AGENTVAULT_STATIC_DIR` | *(empty)* | Serve the built UI (`frontend/dist`) from the API process; the Docker image sets it |
 | `VITE_API_BASE_URL` | *(empty = same origin)* | Frontend build-time API base URL |
 
 ## API
@@ -344,11 +346,16 @@ task text, tool schemas and this execution's tool results to the configured prov
 
 ## Deployment
 
-Verified locally and with Docker Compose. **No public deployment has been made**: hosting credentials
-were not available. [docs/deployment.md](docs/deployment.md) has researched hosting options with their
-current limits (Render free tier has no persistent disk; Fly.io volumes are paid; Cloudflare Pages or
-Netlify for the SPA), ready-made configuration (`render.yaml`, `Dockerfile`s, `_redirects`) and the
-commands to verify a deployment.
+The Docker image serves the API and the web UI from one process, so a single container is a
+complete deployment.
+
+- **Public sandbox demo:** `render.yaml` is a Render Blueprint for one free web service in
+  `AGENTVAULT_DEMO_MODE`. Visitors can run scenarios, decide approvals and replay executions without a
+  token; agents are scripted, tools are mocks, and the database resets whenever the free instance
+  restarts. In Render choose **New → Blueprint** and select this repository.
+- **Private deployment:** leave demo mode off and set `AGENTVAULT_API_TOKEN`; see
+  [docs/deployment.md](docs/deployment.md) for hosting options and their limits, the split
+  frontend/API setup, and the commands to verify a deployment.
 
 ## Troubleshooting
 

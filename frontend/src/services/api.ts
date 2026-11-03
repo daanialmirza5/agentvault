@@ -110,7 +110,10 @@ async function request<T>(path: string, init: { method?: string; body?: unknown;
 
 export const api = {
   health: () => request<{ status: string; version: string }>("/health"),
-  ready: () => request<{ status: string; checks: JsonObject; auth_mode: string; llm_adapter_enabled: boolean }>("/ready"),
+  ready: () =>
+    request<{ status: string; checks: JsonObject; auth_mode: string; llm_adapter_enabled: boolean; demo_mode?: boolean }>(
+      "/ready",
+    ),
   stats: () => request<DashboardStats>("/stats"),
 
   tools: (query?: Query) => request<Page<Tool>>("/tools", { query: { limit: 200, ...query } }),

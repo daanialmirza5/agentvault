@@ -38,7 +38,11 @@ function ApiStatus() {
     <div className="flex items-center gap-2 text-xs text-slate-400" role="status" aria-live="polite">
       <span className={clsx("h-2 w-2 rounded-full", ready.isLoading ? "bg-slate-500" : ok ? "bg-emerald-400" : "bg-rose-400")} />
       {label}
-      {ready.data && <span className="text-slate-500">· {ready.data.auth_mode === "bearer_token" ? "token auth" : "single-user"}</span>}
+      {ready.data && (
+        <span className="text-slate-500">
+          · {ready.data.demo_mode ? "public demo" : ready.data.auth_mode === "bearer_token" ? "token auth" : "single-user"}
+        </span>
+      )}
     </div>
   );
 }
@@ -63,6 +67,17 @@ function TokenDialog({ open, onClose }: { open: boolean; onClose: () => void }) 
       </p>
       <TextInput label="Token" type="password" autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} />
     </Modal>
+  );
+}
+
+function DemoBanner() {
+  const ready = useReady();
+  if (!ready.data?.demo_mode) return null;
+  return (
+    <div role="note" className="mb-5 rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+      <strong className="font-semibold">Public demo.</strong> Agents are scripted and every tool runs against a mock sandbox.
+      Anything you create is shared with other visitors and is reset when the server restarts.
+    </div>
   );
 }
 
@@ -117,6 +132,7 @@ export function Layout() {
         </div>
       </aside>
       <main id="main" className="min-w-0 flex-1 px-8 py-7">
+        <DemoBanner />
         <Outlet />
       </main>
       <TokenDialog open={tokenOpen} onClose={() => setTokenOpen(false)} />

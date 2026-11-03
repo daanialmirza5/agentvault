@@ -5,9 +5,11 @@ from __future__ import annotations
 import threading
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, FastAPI
+from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from app import __version__
 from app.api.deps import require_read_access
@@ -46,6 +48,23 @@ def _sweeper(settings: Settings, stop: threading.Event) -> None:
             logger.exception("approval sweep failed")
         finally:
             session.close()
+
+
+def _mount_frontend(app: FastAPI, static_dir: Path) -> None:
+    """Serve the built single-page app; unknown non-API paths fall back to index.html."""
+    root = static_dir.resolve()
+    index = root / "index.html"
+    if not index.is_file():
+        raise RuntimeError(f"AGENTVAULT_STATIC_DIR has no index.html: {root}")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa(full_path: str) -> FileResponse:
+        if full_path == "api" or full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="not found")
+        candidate = (root / full_path).resolve()
+        if full_path and candidate.is_file() and candidate.is_relative_to(root):
+            return FileResponse(candidate)
+        return FileResponse(index)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -94,6 +113,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     for module in (tools, policies, scenarios, executions, approvals, replays, evaluations, reports, audit):
         api.include_router(module.router, dependencies=[Depends(require_read_access)])
     app.include_router(api)
+    if settings.static_dir is not None:
+        _mount_frontend(app, settings.static_dir)
 
     # Order: the last added middleware runs first.
     app.add_middleware(

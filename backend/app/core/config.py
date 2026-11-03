@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     retention_days: int = Field(default=30, ge=0)
     seed_on_startup: bool = True
     scenarios_dir: Path = REPO_DIR / "scenarios"
+    # Public sandbox demo: no token, mock tools only, no LLM endpoint. Meant for an ephemeral
+    # instance whose database resets on restart; refused together with a token or an LLM.
+    demo_mode: bool = False
+    # Built frontend (``frontend/dist``) to serve from the API process, for single-container deploys.
+    static_dir: Path | None = None
 
     llm_base_url: str | None = None
     llm_api_key: SecretStr | None = None
@@ -56,6 +61,14 @@ class Settings(BaseSettings):
     @property
     def auth_required(self) -> bool:
         return self.api_token is not None and bool(self.api_token.get_secret_value())
+
+    @model_validator(mode="after")
+    def _demo_mode_is_sandboxed(self) -> Settings:
+        if self.demo_mode and self.auth_required:
+            raise ValueError("AGENTVAULT_DEMO_MODE cannot be combined with AGENTVAULT_API_TOKEN")
+        if self.demo_mode and self.llm_enabled:
+            raise ValueError("AGENTVAULT_DEMO_MODE cannot be combined with an LLM endpoint")
+        return self
 
 
 @lru_cache
