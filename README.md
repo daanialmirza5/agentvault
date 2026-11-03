@@ -6,6 +6,8 @@
 
 **Test every action. Control every tool. Replay every decision.**
 
+**[Live demo](https://agentvault-191i.onrender.com)**: a public sandbox. Run a scenario, decide the approvals it raises, then replay it. Agents are scripted and every tool is a mock. It runs on Render's free tier, so the first request can take about a minute, and data resets when the server restarts.
+
 AgentVault is an AI agent reliability and security platform. It covers tool permissions, human
 approval workflows, execution tracing, deterministic replay and reproducible safety evaluations. It
 sits between an agent and its tools. Every proposed tool call is checked against a versioned tool
